@@ -5,15 +5,15 @@ import torch as th
 from torch.autograd import Variable
 from torchvision import datasets
 
-def np_normalize(X, epsilon=1e-5):
-    X = X - np.mean(X, 0, keepdims=True)
-    X = X / (np.sqrt(np.mean(np.square(X), 0, keepdims=True)) + epsilon)
-    return X
+def np_normalize(x, epsilon=1e-5):
+    x = x - np.mean(x, 0, keepdims=True)
+    x = x / (np.sqrt(np.mean(np.square(x), 0, keepdims=True)) + epsilon)
+    return x
 
-def th_normalize(X, epsilon=1e-5):
-    X = X - th.mean(X, 0, keepdim=True)
-    X = X / (th.sqrt(th.mean(X * X, 0, keepdim=True)) + epsilon)
-    return X
+def th_normalize(x, epsilon=1e-5):
+    x = x - th.mean(x, 0, keepdim=True)
+    x = x / (th.sqrt(th.mean(x * x, 0, keepdim=True)) + epsilon)
+    return x
 
 def unbalanced_mnist(n_train=0, n_test=0, pca=False, minfrac=1e-2, D=None, epsilon=1e-5):
     def process(X, y, N):
