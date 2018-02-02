@@ -1,3 +1,5 @@
 .ipynb_checkpoints/
 *.pyc
 MNIST/
+CIFAR10/
+CIFAR100/
