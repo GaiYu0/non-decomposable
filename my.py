@@ -80,15 +80,15 @@ def fn(y_bar, y): # false negative
 
 def precision(y_bar, y):
     tp_, fp_ = tp(y_bar, y), fp(y_bar, y)
-    return tp_ / (tp_ + fp_ + 1) # TODO
+    return tp_ / (tp_ + fp_ + 1e-5) # TODO
 
 def recall(y_bar, y):
     tp_, fn_ = tp(y_bar, y), fn(y_bar, y)
-    return tp_ / (tp_ + fn_ + 1)
+    return tp_ / (tp_ + fn_ + 1e-5)
 
 def f_beta(y_bar, y, beta=1):
     p, r = precision(y_bar, y), recall(y_bar, y)
-    return (1 + beta ** 2) * p * r / (beta ** 2 * p + r + 1)
+    return (1 + beta ** 2) * p * r / (beta ** 2 * p + r + 1e-5)
 
 def onehot(y, D):
     if isinstance(y, Variable):
@@ -107,9 +107,11 @@ def nd_recall(nd_y_bar, nd_y, D):
     nd_y_bar, nd_y = th.chunk(nd_y_bar, D, 1), th.chunk(nd_y, D, 1)
     return sum(recall(y_bar, y) for y_bar, y in zip(nd_y_bar, nd_y)) / D
 
-def nd_f_beta(y_bar, y, D, beta=1):
-    p, r = nd_precision(y_bar, y, D), nd_recall(y_bar, y, D)
-    return (1 + beta ** 2) * p * r / (beta ** 2 * p + r + 1)
+def nd_f_beta(nd_y_bar, nd_y, D, beta=1):
+    nd_y_bar, nd_y = onehot(nd_y_bar, D), onehot(nd_y, D)
+    nd_y_bar, nd_y = th.chunk(nd_y_bar, D, 1), th.chunk(nd_y, D, 1)
+    pr = ((precision(y_bar, y), recall(y_bar, y)) for y_bar, y in zip(nd_y_bar, nd_y))
+    return sum((1 + beta ** 2) * p * r / (beta ** 2 * p + r + 1e-5) for p, r in pr) / D
 
 def nd_curry(f, D):
     return lambda y_bar, y: f(y_bar, y, D)
@@ -135,12 +137,14 @@ def perturb(module, std):
         p.data += th.randn(p.data.size()) * std
     return module
 
-def sample(X, y, size):
+def sample_subset(X, y, size, variable=True):
     if isinstance(X, Variable):
         X = X.data
     if isinstance(y, Variable):
         y = y.data
     X, y = X.numpy(), y.numpy()
     idx = np.random.randint(0, len(X) - 1, size)
-    X, y = Variable(th.from_numpy(X[idx])), Variable(th.from_numpy(y[idx]))
+    X, y = th.from_numpy(X[idx]), th.from_numpy(y[idx])
+    if variable:
+        X, y = Variable(X), Variable(y)
     return X, y
