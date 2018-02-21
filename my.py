@@ -17,24 +17,33 @@ def th_normalize(x, epsilon=1e-5):
     x = x / (th.sqrt(th.mean(x * x, 0, keepdim=True)) + epsilon)
     return x
 
-def unbalanced_mnist(n_train=0, n_test=0, pca=False, minfrac=1e-2, D=None, epsilon=1e-5):
+def unbalanced_dataset(dataset, n_train=0, n_test=0, pca=False, minfrac=1e-2, D=None,
+                       epsilon=1e-5, p=[], tensor=False, variable=False):
     def process(X, y, N):
-        positive, negative = X[y == 0], X[y != 0]
-        positive = np.hstack((positive, np.ones((len(positive), 1))))
-        negative = np.hstack((negative, np.zeros((len(negative), 1))))
-        Xy = np.vstack((positive, negative))
+        if p:
+            select = lambda y, lower, upper: np.logical_and(lower <= y, y < upper)
+            x_list = [X[select(y, p[i], p[i + 1])] for i in range(len(p) - 1)]
+            Xy = [np.hstack((x, np.full((len(x), 1), i))) for i, x in enumerate(x_list)]
+            Xy = np.vstack(Xy)
+        else:
+            Xy = np.hstack((X, y.reshape(-1, 1)))
         idx = np.arange(len(Xy))
         npr.shuffle(idx)
         if N > 0:
             idx = idx[:N]
         Xy = Xy[idx]
         X, y = Xy[:, :X.shape[1]], Xy[:, -1]
-        X, y = Variable(th.from_numpy(X).float()), Variable(th.from_numpy(y).long())
+        if tensor:
+            X, y = th.from_numpy(X).float(), th.from_numpy(y).long()
+        if variable:
+            X, y = Variable(X), Variable(y)
         return X, y
 
-    MNIST = datasets.MNIST('MNIST/', train=True)
-    train_data = MNIST.train_data.numpy().reshape((-1, 28 * 28))
-    train_labels = MNIST.train_labels.numpy()
+    d = getattr(datasets, dataset)(dataset, train=True)
+    train_data = d.train_data.numpy()
+    train_data = np.reshape(train_data, (train_data.shape[0], -1))
+    train_labels = d.train_labels.numpy()
+
     if n_train > 0:
         train_data, train_labels = train_data[:n_train], train_labels[:n_train]
     if pca:
@@ -49,9 +58,11 @@ def unbalanced_mnist(n_train=0, n_test=0, pca=False, minfrac=1e-2, D=None, epsil
     train_data = train_data / std
     train_data, train_labels = process(train_data, train_labels, n_train)
 
-    MNIST = datasets.MNIST('MNIST/', train=False)
-    test_data = MNIST.test_data.numpy().reshape((-1, 28 * 28))
-    test_labels = MNIST.test_labels.numpy()
+    d = getattr(datasets, dataset)(dataset, train=False)
+    test_data = d.test_data.numpy()
+    test_data = np.reshape(test_data, (test_data.shape[0], -1))
+    test_labels = d.test_labels.numpy()
+
     if n_test > 0:
         test_data, test_labels = test_data[:n_test], test_labels[:n_test]
     if pca:
@@ -91,11 +102,20 @@ def f_beta(y_bar, y, beta=1):
     return (1 + beta ** 2) * p * r / (beta ** 2 * p + r + 1e-5)
 
 def onehot(y, D):
+    variable = False
     if isinstance(y, Variable):
+        variable = True
         y = y.data
+    if y.dim() == 1:
+        y = y.view(-1, 1)
     y_onehot = th.zeros(y.size()[0], D)
+    is_cuda = y.is_cuda
+    if y.is_cuda:
+        y = y.cpu()
     y_onehot.scatter_(1, y, 1)
-    return Variable(y_onehot)
+    y_onehot = y_onehot.cuda() if is_cuda else y_onehot
+    y_onehot = Variable(y_onehot) if variable else y_onehot
+    return y_onehot
 
 def nd_precision(nd_y_bar, nd_y, D):
     nd_y_bar, nd_y = onehot(nd_y_bar, D), onehot(nd_y, D)
@@ -117,8 +137,11 @@ def nd_curry(f, D):
     return lambda y_bar, y: f(y_bar, y, D)
 
 def global_stats(module, loader, stats):
+    is_cuda = next(module.parameters()).is_cuda
     y_bar_list, y_list = [], []
     for (X, y) in loader:
+        if is_cuda:
+            X, y = X.cuda(), y.cuda()   
         X, y = Variable(X), Variable(y)
         y_bar = predict(module, X)
 
@@ -133,18 +156,13 @@ def global_stats(module, loader, stats):
 
 def perturb(module, std):
     module = copy.deepcopy(module)
+    contextualize = lambda x: x.cuda() if next(module.parameters()).is_cuda else x
     for p in module.parameters():
-        p.data += th.randn(p.data.size()) * std
+#       p.data += contextualize(th.rand(p.data.size()) * std - std / 2)
+        p.data += contextualize(th.randn(p.data.size()) * std)
     return module
 
-def sample_subset(X, y, size, variable=True):
-    if isinstance(X, Variable):
-        X = X.data
-    if isinstance(y, Variable):
-        y = y.data
-    X, y = X.numpy(), y.numpy()
+def sample_subset(X, y, size):
     idx = np.random.randint(0, len(X) - 1, size)
-    X, y = th.from_numpy(X[idx]), th.from_numpy(y[idx])
-    if variable:
-        X, y = Variable(X), Variable(y)
+    X, y = th.from_numpy(X[idx]).float(), th.from_numpy(y[idx]).long()
     return X, y
