@@ -4,6 +4,7 @@ import numpy.random as npr
 from matplotlib.mlab import PCA
 import torch as th
 from torch.autograd import Variable
+import torch.nn as nn
 from torchvision import datasets
 
 def np_normalize(x, epsilon=1e-5):
@@ -72,6 +73,42 @@ def unbalanced_dataset(dataset, n_train=0, n_test=0, pca=False, minfrac=1e-2, D=
     test_data = (test_data - mean) / std
     test_data, test_labels = process(test_data, test_labels, n_test)
 
+    return train_data, train_labels, test_data, test_labels
+
+def unbalanced_cifar10(n_train, n_test, shape=None, p=[], epsilon=1e-5):
+    def process(X, y, N):
+        if p:
+            select = lambda y, lower, upper: np.logical_and(lower <= y, y < upper)
+            x_list = [X[select(y, p[i], p[i + 1])] for i in range(len(p) - 1)]
+            Xy = [np.hstack((x, np.full((len(x), 1), i))) for i, x in enumerate(x_list)]
+            Xy = np.vstack(Xy)
+        else:
+            Xy = np.hstack((X, y.reshape(-1, 1)))
+        idx = np.arange(len(Xy))
+        npr.shuffle(idx)
+        if N > 0:
+            idx = idx[:N]
+        Xy = Xy[idx]
+        X, y = Xy[:, :X.shape[1]], Xy[:, -1]
+        if shape:
+            X = np.reshape(X, (N,) + shape)
+        return X, y
+
+    cifar10 = datasets.CIFAR10('CIFAR10/', train=True)
+    train_data, train_labels = cifar10.train_data, np.array(cifar10.train_labels)
+    train_data = np.reshape(train_data, (len(train_data), -1))
+    mean = np.mean(train_data, 0, keepdims=True)
+    train_data = train_data - mean
+    std = np.std(train_data, 0, keepdims=True) + epsilon
+    train_data = train_data / std
+    train_data, train_labels = process(train_data, train_labels, n_train)
+
+    cifar10 = datasets.CIFAR10('CIFAR10/', train=False)
+    test_data, test_labels = cifar10.test_data, np.array(cifar10.test_labels)
+    test_data = np.reshape(test_data, (len(test_data), -1))
+    test_data = test_data - mean
+    test_data = test_data / std
+    test_data, test_labels = process(test_data, test_labels, n_test)
     return train_data, train_labels, test_data, test_labels
 
 def predict(classifier, X):
@@ -166,3 +203,20 @@ def sample_subset(X, y, size):
     idx = np.random.randint(0, len(X) - 1, size)
     X, y = th.from_numpy(X[idx]).float(), th.from_numpy(y[idx]).long()
     return X, y
+
+class MLP(nn.Module):
+    def __init__(self, D, nonlinear):
+        super(MLP, self).__init__()
+        self.linears = nn.ModuleList([nn.Linear(D[i], D[i + 1])
+                                      for i in range(len(D) - 1)])
+        self.nonlinear = nonlinear
+        self.expose = False
+
+    def forward(self, x):
+        if x.dim != 2:
+            x = x.view(x.size()[0], -1)
+        for i, linear in enumerate(self.linears):
+            x = linear(x)
+            if i < len(self.linears) - 1:
+                x = self.nonlinear(x)
+        return x
