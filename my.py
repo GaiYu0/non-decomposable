@@ -5,6 +5,7 @@ from matplotlib.mlab import PCA
 import torch as th
 from torch.autograd import Variable
 import torch.nn as nn
+import torch.nn.functional as F
 from torchvision import datasets
 
 def np_normalize(x, epsilon=1e-5):
@@ -220,3 +221,32 @@ class MLP(nn.Module):
             if i < len(self.linears) - 1:
                 x = self.nonlinear(x)
         return x
+
+class RN(nn.Module):
+    def __init__(self, n_objects, n_features, D, nonlinear):
+        super(RN, self).__init__()
+        self.n_objects = n_objects
+        self.n_features = n_features
+        self.D = D
+        self.nonlinear = nonlinear
+
+        self.conv2d_w = nn.Parameter(th.randn(D[0], n_features, 2, 1))
+        self.conv2d_b = nn.Parameter(th.zeros(D[0]))
+        self.mlp = MLP(D, nonlinear)
+
+    def forward(self, x):
+        """
+        Parameters
+        ----------
+        x : (N, N_OBJECTS * N_FEATURES)
+        """
+
+        N, D = x.size()
+        x = x.view(N, self.n_objects, self.n_features, 1).transpose(1, 2)
+        # TODO reverse iteration order
+        ij_list = []
+        for d in range(1, self.n_objects):
+            ij = self.nonlinear(F.conv2d(x, self.conv2d_w, self.conv2d_b, dilation=d))
+            ij_list.append(F.avg_pool2d(ij, (self.n_objects - d, 1)).view(N, self.D[0]))
+        x = sum(ij_list) / len(ij_list)
+        return self.mlp(x)
