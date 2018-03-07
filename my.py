@@ -118,7 +118,7 @@ def predict(classifier, X):
 def accuracy(y_bar, y):
     return th.sum(((y_bar - y) == 0).float()) / float(y.size()[0])
 
-def tp(y_bar, y): # true positive
+def tp(y_bar, y): # true positive (labeled as 1)
     return th.sum((y_bar * y).float())
 
 def fp(y_bar, y): # false positive
@@ -166,10 +166,12 @@ def nd_recall(nd_y_bar, nd_y, D):
     return sum(recall(y_bar, y) for y_bar, y in zip(nd_y_bar, nd_y)) / D
 
 def nd_f_beta(nd_y_bar, nd_y, D, beta=1):
+    # macro averaging
     nd_y_bar, nd_y = onehot(nd_y_bar, D), onehot(nd_y, D)
     nd_y_bar, nd_y = th.chunk(nd_y_bar, D, 1), th.chunk(nd_y, D, 1)
-    pr = ((precision(y_bar, y), recall(y_bar, y)) for y_bar, y in zip(nd_y_bar, nd_y))
-    return sum((1 + beta ** 2) * p * r / (beta ** 2 * p + r + 1e-5) for p, r in pr) / D
+    p = sum(precision(y_bar, y) for y_bar, y in zip(nd_y_bar, nd_y)) / D
+    r = sum(recall(y_bar, y) for y_bar, y in zip(nd_y_bar, nd_y)) / D
+    return (1 + beta ** 2) * p * r / (beta ** 2 * p + r + 1e-5)
 
 def nd_curry(f, D):
     return lambda y_bar, y: f(y_bar, y, D)
@@ -194,9 +196,11 @@ def global_stats(module, loader, stats):
 
 def perturb(module, std):
     module = copy.deepcopy(module)
-    contextualize = lambda x: x.cuda() if next(module.parameters()).is_cuda else x
+    is_cuda = next(module.parameters()).is_cuda
+    if is_cuda:
+        device = next(module.parameters()).get_device()
+    contextualize = lambda x: x.cuda(device) if is_cuda else x
     for p in module.parameters():
-#       p.data += contextualize(th.rand(p.data.size()) * std - std / 2)
         p.data += contextualize(th.randn(p.data.size()) * std)
     return module
 
