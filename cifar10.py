@@ -12,12 +12,15 @@ import my
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--batch-size', type=int, default=8)
+parser.add_argument('--classifier-path', type=str, default='')
+parser.add_argument('--critic-path', type=str, default='')
 parser.add_argument('gpu', type=int)
 parser.add_argument('--inner-actor', type=int, default=5)
 parser.add_argument('--inner-critic', type=int, default=5)
-parser.add_argument('--n_perturbations', type=int, default=25)
+parser.add_argument('--n-perturbations', type=int, default=25)
 parser.add_argument('--n-test', type=int, default=0)
 parser.add_argument('--n-train', type=int, default=0)
+parser.add_argument('--optimizer-path', type=str, default='')
 parser.add_argument('outer', type=int)
 parser.add_argument('--sample-size', type=int, default=64)
 parser.add_argument('--std', type=float, default=0.1)
@@ -105,13 +108,13 @@ print('accuracy: %f, precision: %f, recall: %f, f1: %f' %
 for i in range(args.outer):
     for p in c.parameters():
         p.requires_grad = False
-#     L_c = L(c, train_loader)
-    L_c = L(c, test_loader)
+    L_c = L(c, train_loader)
+#   L_c = L(c, test_loader)
     c_bar_list, target_list = [], []
     for j in range(args.n_perturbations):
         c_bar_list.append(my.perturb(c, args.std))
-#         target = L_c - L(c_bar_list[-1], train_loader)
-        target = L_c - L(c_bar_list[-1], test_loader)
+        target = L_c - L(c_bar_list[-1], train_loader)
+#       target = L_c - L(c_bar_list[-1], test_loader)
         target_list.append(target[0])
 #   target_mean.append(float(th.mean(th.cat(target_list))))
 #   target_std.append(float(th.std(th.cat(target_list))))
@@ -144,3 +147,12 @@ for i in range(args.outer):
     if (i + 1) % 1 == 0:
         f1 = my.global_stats(c, test_loader, my.nd_curry(my.nd_f_beta, n_classes))
         print('[iteration %d]f1: %f' % (i + 1, f1))
+        if float(f1) > 0.2:
+            if args.classifier_path:
+                th.save(c.state_dict(), args.classifier_path)
+            if args.classifier_path:
+                th.save(critic.state_dict(), args.critic_path)
+            if args.optimizer_path:
+                th.save(c_optim.state_dict(), args.optimizer_path + 'classifier')
+                th.save(critic_optim.state_dict(), args.optimizer_path + 'critic')
+            break

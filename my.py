@@ -204,10 +204,10 @@ def perturb(module, std):
         p.data += contextualize(th.randn(p.data.size()) * std)
     return module
 
-def sample_subset(X, y, size):
-    idx = np.random.randint(0, len(X) - 1, size)
-    X, y = th.from_numpy(X[idx]).float(), th.from_numpy(y[idx]).long()
-    return X, y
+def sample_subset(x, y, size):
+    idx = np.random.randint(0, len(x) - 1, size)
+    x, y = th.from_numpy(x[idx]).float(), th.from_numpy(y[idx]).long()
+    return x, y
 
 class MLP(nn.Module):
     def __init__(self, D, nonlinear):
