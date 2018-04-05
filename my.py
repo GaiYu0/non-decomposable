@@ -112,8 +112,8 @@ def unbalanced_cifar10(n_train, n_test, shape=None, p=[], epsilon=1e-5):
     test_data, test_labels = process(test_data, test_labels, n_test)
     return train_data, train_labels, test_data, test_labels
 
-def predict(classifier, X):
-    return th.max(classifier(X), 1)[1]
+def predict(classifier, x):
+    return th.max(classifier(x), 1)[1]
 
 def accuracy(y_bar, y):
     return th.sum(((y_bar - y) == 0).float()) / float(y.size()[0])
