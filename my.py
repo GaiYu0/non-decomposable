@@ -179,14 +179,28 @@ def nd_curry(f, D):
 def global_stats(module, loader, stats):
     is_cuda = next(module.parameters()).is_cuda
     y_bar_list, y_list = [], []
-    for (X, y) in loader:
+    for (x, y) in loader:
         if is_cuda:
-            X, y = X.cuda(), y.cuda()   
-        X, y = Variable(X), Variable(y)
-        y_bar = predict(module, X)
+            x, y = x.cuda(), y.cuda()   
+        x, y = Variable(x), Variable(y)
+        y_bar = predict(module, x)
 
         y_bar_list.append(y_bar)
         y_list.append(y)
+
+    y_bar, y = th.cat(y_bar_list).view(-1, 1), th.cat(y_list).view(-1, 1)
+    if callable (stats):
+        return stats(y_bar, y)
+    else:
+        return tuple(s(y_bar, y) for s in stats)
+
+def parallel_global_stats(module, loader, stats, devices):
+    # assert next(module.parameters()).is_cuda
+    m = nn.DataParallel(module, devices, next(module.parameters()).get_device())
+    y_bar_list, y_list = [], []
+    for (x, y) in loader:
+        y_bar_list.append(th.max(m(Variable(x).cuda()), 1)[1])
+        y_list.append(Variable(y.cuda()))
 
     y_bar, y = th.cat(y_bar_list).view(-1, 1), th.cat(y_list).view(-1, 1)
     if callable (stats):
