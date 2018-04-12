@@ -117,11 +117,42 @@ def shuffle(x):
     npr.shuffle(i)
     return x[i]
 
+def load_cifar10(partition=[], rbg=False, epsilon=1e-5):
+    def process(x, y):
+        if rbg:
+            x = x.reshape((-1, 32, 32, 3)).transpose((0, 3, 1, 2))
+        if partition:
+            p_list = [np.full(y.shape, p, y.dtype) for p in partition]
+            for i, (m, n) in enumerate(zip(p_list[:-1], p_list[1:])):
+                y[np.logical_and(m <= y, y < n)] = i
+        return x, y
+
+    d = datasets.CIFAR10('CIFAR10/', train=True)
+    train_x, train_y = d.train_data, np.array(d.train_labels)
+    train_x = np.reshape(train_x, (len(train_x), -1))
+    mean = np.mean(train_x, 0, keepdims=True)
+    train_x = train_x - mean
+    std = np.std(train_x, 0, keepdims=True) + epsilon
+    train_x = train_x / std
+    train_x, train_y = process(train_x, train_y)
+
+    d = datasets.CIFAR10('CIFAR10/', train=False)
+    test_x, test_y = d.test_data, np.array(d.test_labels)
+    test_x = np.reshape(test_x, (len(test_x), -1))
+    test_x = test_x - mean
+    test_x = test_x / std
+    test_x, test_y = process(test_x, test_y)
+
+    return train_x, train_y, test_x, test_y
+
 def load_cifar100(partition=[], epsilon=1e-5):
     def process(x, y):
-        p_list = [np.full(y.shape, p, y.dtype) for p in partition]
-        for i, (m, n) in enumerate(zip(p_list[:-1], p_list[1:])):
-            y[np.logical_and(m <= y, y < n)] = i
+        if rbg:
+            x = x.reshape((-1, 32, 32, 3)).transpose((0, 3, 1, 2))
+        if partition:
+            p_list = [np.full(y.shape, p, y.dtype) for p in partition]
+            for i, (m, n) in enumerate(zip(p_list[:-1], p_list[1:])):
+                y[np.logical_and(m <= y, y < n)] = i
         return x, y
 
     d = datasets.CIFAR100('CIFAR100/', train=True)

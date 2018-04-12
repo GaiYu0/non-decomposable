@@ -18,15 +18,16 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--actor-iterations', type=int, default=10)
 parser.add_argument('--batch-size', type=int, default=1)
 parser.add_argument('--critic-iterations', type=int, default=10)
+parser.add_argument('--gpu', type=int, default=-1)
 parser.add_argument('--hist', type=str, default='')
 parser.add_argument('--n-iterations', type=int)
 parser.add_argument('--n-perturbations', type=int, default=50)
 parser.add_argument('--n-test', type=int, default=0)
 parser.add_argument('--n-train', type=int, default=0)
 parser.add_argument('--pre', type=str, default='')
-parser.add_argument('--sample-size', type=int, default=64)
+parser.add_argument('--sample-size', type=int, default=16)
 parser.add_argument('--std', type=float, default=1e-1)
-parser.add_argument('--tau', type=float, default=1e-3)
+parser.add_argument('--tau', type=float, default=1e-2)
 args = parser.parse_args()
 
 print(args)
@@ -50,12 +51,16 @@ dataset = TensorDataset(train_x, train_y)
 
 n_classes = int(train_y.max() - train_y.min() + 1)
 
-cuda = True # always GPU 0
+if args.gpu < 0:
+    cuda = False
+else:
+    cuda = True
+    th.cuda.set_device(args.gpu)
 
 # TODO correctness of drop_last?
 train_loader = DataLoader(TensorDataset(train_x, train_y),
-                          1024 * 4, shuffle=True, drop_last=False)
-test_loader = DataLoader(TensorDataset(test_x, test_y), 1024 * 4, drop_last=False)
+                          args.n_train, shuffle=True, drop_last=False)
+test_loader = DataLoader(TensorDataset(test_x, test_y), args.n_train, drop_last=False)
 
 class CNN(nn.Module):
     def __init__(self, n_classes):
@@ -120,8 +125,8 @@ c_optim = Adam(c.parameters(), 1e-3)
 critic_optim = Adam(critic.parameters(), 1e-3)
 
 nd_f_beta = my.nd_curry(my.nd_f_beta, n_classes)
-L = lambda c, loader: my.parallel_global_stats(c, loader, nd_f_beta, range(4))
-# L = lambda c, loader: my.global_stats(c, loader, nd_f_beta)
+# L = lambda c, loader: my.parallel_global_stats(c, loader, nd_f_beta, range(4))
+L = lambda c, loader: my.global_stats(c, loader, nd_f_beta)
 
 def forward(classifier, xy):
     x, y = xy
@@ -129,6 +134,16 @@ def forward(classifier, xy):
     y_bar = F.softmax(classifier(x), 1)
     return th.cat((y, y_bar), 1).view(1, -1)
 
+def objective(c, critic, s, ce=0.0):
+    y_onehot = [my.onehot(y, n_classes) for x, y in s]
+    z_list = [c(x) for x, y in s]
+    cat = [th.cat((y, F.softmax(z, 1)), 1).view(1, -1) for y, z in zip(y_onehot, z_list)]
+    ret = -th.mean(critic(th.cat(cat, 0)))
+    if ce > 0:
+        ret += ce / len(s) * sum(F.nll_loss(F.log_softmax(z), y)
+                                 for z, (x, y) in zip(z_list, s))
+    return ret
+    
 def sample(sample_size, batch_size):
     dl = DataLoader(dataset, sample_size, shuffle=True)
     s = it.takewhile(lambda x: x[0] < batch_size, enumerate(dl))
@@ -194,10 +209,13 @@ for i in range(args.n_iterations):
     critic.eval()
     c_param = copy.deepcopy(tuple(c.parameters()))
     for j in range(args.actor_iterations):
+        '''
         y = th.cat([forward(c, x) for x in s], 0)
         objective = -th.mean(critic(y))
+        '''
+        ret = objective(c, critic, s, 0)
         c_optim.zero_grad()
-        objective.backward()
+        ret.backward()
         c_optim.step()
         if any(float(th.max(th.abs(p - q))) > args.std \
                for p, q in zip(c_param, c.parameters())): break
