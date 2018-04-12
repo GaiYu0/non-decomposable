@@ -34,7 +34,7 @@ print(args)
 th.random.manual_seed(1)
 th.cuda.manual_seed_all(1)
 
-train_x, train_y, test_x, test_y = my.load_cifar10(rbg=True)
+train_x, train_y, test_x, test_y = my.load_cifar10(partition=(0, 1, 10), rbg=True)
 
 if args.n_train > 0:
     train_x, train_y = train_x[:args.n_train], train_y[:args.n_train]
@@ -129,6 +129,16 @@ def forward(classifier, xy):
     y_bar = F.softmax(classifier(x), 1)
     return th.cat((y, y_bar), 1).view(1, -1)
 
+def objective(c, critic, s, ce=0.0):
+    y_onehot = [my.onehot(y, n_classes) for x, y in s]
+    z_list = [c(x) for x, y in s]
+    cat = [th.cat((y, F.softmax(z, 1)), 1).view(1, -1) for y, z in zip(y_onehot, z_list)]
+    ret = -th.mean(critic(th.cat(cat, 0)))
+    if ce > 0:
+        ret += ce / len(s) * sum(F.nll_loss(F.log_softmax(z, 1), y)
+                                 for z, (x, y) in zip(z_list, s))
+    return ret
+
 def sample(sample_size, batch_size):
     dl = DataLoader(dataset, sample_size, shuffle=True)
     s = it.takewhile(lambda x: x[0] < batch_size, enumerate(dl))
@@ -194,10 +204,13 @@ for i in range(args.n_iterations):
     critic.eval()
     c_param = copy.deepcopy(tuple(c.parameters()))
     for j in range(args.actor_iterations):
+        '''
         y = th.cat([forward(c, x) for x in s], 0)
         objective = -th.mean(critic(y))
+        '''
+        ret = objective(c, critic, s, 1)
         c_optim.zero_grad()
-        objective.backward()
+        ret.backward()
         c_optim.step()
         if any(float(th.max(th.abs(p - q))) > args.std \
                for p, q in zip(c_param, c.parameters())): break
