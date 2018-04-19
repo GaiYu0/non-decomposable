@@ -243,7 +243,8 @@ def global_stats(module, loader, stats):
     for (x, y) in loader:
         if is_cuda:
             x, y = x.cuda(), y.cuda()   
-        x, y = Variable(x), Variable(y)
+        x = x if isinstance(x, Variable) else Variable(x)
+        y = y if isinstance(y, Variable) else Variable(y)
         y_bar = predict(module, x)
 
         y_bar_list.append(y_bar)
@@ -302,6 +303,44 @@ class MLP(nn.Module):
         return x
 
 class RN(nn.Module):
+    def __init__(self, n_objects, n_features, d_conv2d, d_linear, nonlinear):
+        super(RN, self).__init__()
+        self.n_objects = n_objects
+        self.n_features = n_features
+        self.d_conv2d = d_conv2d
+        self.d_linear = d_linear
+        self.d_linear = d_linear
+        self.nonlinear = nonlinear
+
+        self.conv2d_w0 = nn.Parameter(th.randn(d_conv2d[0], n_features, 2, 1))
+        self.conv2d_b0 = nn.Parameter(th.zeros(d_conv2d[0]))
+        self.conv2d_w = nn.ParameterList([nn.Parameter(th.randn(m, n, 1, 1)) \
+                                          for m, n in zip(d_conv2d[1:], d_conv2d[:-1])])
+        self.conv2d_b = nn.ParameterList([nn.Parameter(th.zeros(d)) for d in d_conv2d[1:]])
+        self.mlp = MLP((d_conv2d[-1],) + d_linear, nonlinear)
+
+    def forward(self, x):
+        """
+        Parameters
+        ----------
+        x : (N, N_OBJECTS * N_FEATURES)
+        """
+
+        N, d_linear = x.size()
+        x = x.view(N, self.n_objects, self.n_features, 1).transpose(1, 2)
+        # TODO reverse iteration order
+        ij_list = []
+        for d in range(1, self.n_objects):
+            ij = self.nonlinear(F.conv2d(x, self.conv2d_w0, self.conv2d_b0, dilation=d))
+            for w, b in zip(self.conv2d_w, self.conv2d_b):
+                ij = self.nonlinear(F.conv2d(ij, w, b))
+            ij = F.avg_pool2d(ij, (self.n_objects - d, 1))
+            ij_list.append(ij.view(N, self.d_linear[0]))
+        x = sum(ij_list) / len(ij_list)
+        return self.mlp(x)
+
+'''
+class RN(nn.Module):
     def __init__(self, n_objects, n_features, D, nonlinear):
         super(RN, self).__init__()
         self.n_objects = n_objects
@@ -329,3 +368,9 @@ class RN(nn.Module):
             ij_list.append(F.avg_pool2d(ij, (self.n_objects - d, 1)).view(N, self.D[0]))
         x = sum(ij_list) / len(ij_list)
         return self.mlp(x)
+'''
+
+state_dict_cpu2gpu = lambda state_dict: {key : value.cuda() \
+                                         for key, value in state_dict.items()}
+state_dict_gpu2cpu = lambda state_dict: {key : value.cpu() \
+                                         for key, value in state_dict.items()}
