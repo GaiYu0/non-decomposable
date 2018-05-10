@@ -8,13 +8,15 @@ from torch.utils.data import DataLoader
 from torchvision import datasets
 
 
-def load_mnist(partition=[], rbg=False, epsilon=1e-5):
+def load_mnist(labelling={}, rbg=False, epsilon=1e-5):
     def process(x, y):
         if rbg:
             x = x.view((-1, 1, 28, 28))
-        if partition:
-            for i, (m, n) in enumerate(zip(partition[:-1], partition[1:])):
-                y[(m <= y) * (y < n)] = i
+        if labelling:
+            y_bar = y.clone()
+            for (m, n), label in labelling.items():
+                y_bar[(m <= y) * (y < n)] = label
+            y = y_bar
         return x, y
 
     d = datasets.MNIST('MNIST/', train=True)
@@ -34,14 +36,15 @@ def load_mnist(partition=[], rbg=False, epsilon=1e-5):
     return train_x, train_y, test_x, test_y
 
 
-def load_cifar10(partition=[], rbg=False, torch=False, epsilon=1e-5):
+def load_cifar10(labelling={}, rbg=False, torch=False, epsilon=1e-5):
     def process(x, y):
         if rbg:
             x = x.reshape((-1, 32, 32, 3)).transpose((0, 3, 1, 2))
-        if partition:
-            p_list = [np.full(y.shape, p, y.dtype) for p in partition]
-            for i, (m, n) in enumerate(zip(p_list[:-1], p_list[1:])):
-                y[np.logical_and(m <= y, y < n)] = i
+        if labelling:
+            y_bar = y.clone()
+            for (m, n), label in labelling.items():
+                y_bar[(m <= y) * (y < n)] = label
+            y = y_bar
         return x, y
 
     d = datasets.CIFAR10('CIFAR10/', train=True)
