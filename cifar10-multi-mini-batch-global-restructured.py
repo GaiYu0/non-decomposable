@@ -27,7 +27,7 @@ args = Args()
 
 args.critic_iterations = 25
 args.master_gpu = 2
-args.n_iterations = 250
+args.n_iterations = 100000
 args.n_perturbations = 100
 args.batch_size = 50
 args.slave_gpu = ''
@@ -92,8 +92,8 @@ def L_mini_batch(c, xy):
 # c = my.MLP((3072,) + (1024,) + (n_classes,), F.relu)
 # c = my.MLP((3072,) + (1024,) * 2 + (n_classes,), F.relu)
 # c = my.MLP((3072,) + (1024,) * 3 + (n_classes,), F.relu)
-c = lenet.LeNet(3, n_classes)
-# c = resnet.ResNet(depth=18, n_classes=n_classes)
+# c = lenet.LeNet(3, n_classes)
+c = resnet.ResNet(depth=18, n_classes=n_classes)
 
 critic = my.RN(args.batch_size, 2 * n_classes, tuple(), (4 * n_classes, 64, 256), (256, 64) + (1,), F.relu, triu=True)
 
