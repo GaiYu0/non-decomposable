@@ -206,7 +206,7 @@ def perturb(module, std):
     p = next(module.parameters())
     device = p.get_device() if p.is_cuda else None
     for p in module.parameters():
-        p.data += th.randn(*p.size(), device=device) * std
+        p.data += th.randn(*p.shape, device=device) * std
     return module
 
 
@@ -269,7 +269,7 @@ class RN(nn.Module):
 
         # TODO correctness
 
-        n, _ = x.size()
+        n, _ = x.shape
         if self.unary:
             x = x.view(n * self.n_objects, self.n_features)
             x = self.nonlinear(self.unary(x))
@@ -309,7 +309,7 @@ class RN(nn.Module):
         x : (N, N_OBJECTS * N_FEATURES)
         """
 
-        N, d_linear = x.size()
+        N, d_linear = x.shape
         x = x.view(N, self.n_objects, self.n_features, 1).transpose(1, 2)
         # TODO reverse iteration order
         ij_list = []
@@ -344,7 +344,7 @@ class RN(nn.Module):
         x : (N, N_OBJECTS * N_FEATURES)
         """
 
-        N, D = x.size()
+        N, D = x.shape
         x = x.view(N, self.n_objects, self.n_features, 1).transpose(1, 2)
         # TODO reverse iteration order
         ij_list = []

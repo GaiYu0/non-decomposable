@@ -4,9 +4,11 @@
 # In[ ]:
 
 
+import argparse
 import copy
 import collections
 import math
+import pickle
 import time
 import numpy as np
 import torch as th
@@ -22,18 +24,28 @@ import resnet
 # In[ ]:
 
 
-class Args:
-    pass
-args = Args()
-
-args.n_iterations_critic = 100
+'''
+args = argparse.Namespace()
+args.n_iterations_critic = 100 # 25/50/100
 args.iw = 'quadratic' # None/linear/quadratic
 args.gpu = 0
 args.n_iterations = 5000
-args.n_perturbations = 25
+args.n_perturbations = 25 # 25/50/100
 args.batch_size = 50
-args.std = 1e-1
+args.std = 1e-1 # 1/0.1/0.01
 args.tau = 1e-1
+'''
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--n-iterations-critic', type=int)
+parser.add_argument('--iw', type=str, default='')
+parser.add_argument('--gpu', type=int)
+parser.add_argument('--n-iterations', type=int)
+parser.add_argument('--n-perturbations', type=int)
+parser.add_argument('--batch-size', type=int)
+parser.add_argument('--std', type=float)
+parser.add_argument('--tau', type=float)
+args = parser.parse_args()
 
 verbose = None
 
@@ -184,9 +196,6 @@ for i in range(args.n_iterations):
 # In[ ]:
 
 
-import pickle
-fields = [f for f in dir(args) if '__' not in f]
-values = [getattr(args, f) for f in fields]
-path = 'hist/' + '-'.join('%s-%s' % (f, v) for f, v in zip(fields, values))
+keys = sorted(vars(args).keys())
+path = 'hist/' + '-'.join('%s-%s' % (key, str(getattr(args, key))) for key in keys)
 pickle.dump(hist, open(path, 'wb'))
-
