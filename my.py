@@ -104,37 +104,6 @@ def load_cifar100(labelling={}, rbg=False, torch=False, epsilon=1e-5):
     return train_x, train_y, test_x, test_y
 
 
-def accuracy(y_bar, y):
-    return th.sum(((y_bar - y) == 0).float()) / float(y.size(0))
-
-
-def tp(y_bar, y): # true positive (labeled as 1)
-    return th.sum((y_bar * y).float())
-
-
-def fp(y_bar, y): # false positive
-    return th.sum((y_bar * (1 - y)).float())
-
-
-def fn(y_bar, y): # false negative
-    return th.sum(((1 - y_bar) * y).float())
-
-
-def precision(y_bar, y):
-    tp_, fp_ = tp(y_bar, y), fp(y_bar, y)
-    return tp_ / (tp_ + fp_ + 1e-5) # TODO
-
-
-def recall(y_bar, y):
-    tp_, fn_ = tp(y_bar, y), fn(y_bar, y)
-    return tp_ / (tp_ + fn_ + 1e-5) # TODO
-
-
-def f_beta(y_bar, y, beta=1):
-    p, r = precision(y_bar, y), recall(y_bar, y)
-    return (1 + beta ** 2) * p * r / (beta ** 2 * p + r + 1e-5) # TODO
-
-
 def onehot(x, d):
     """
     Parameters
@@ -142,87 +111,62 @@ def onehot(x, d):
     x : (n,) or (n, 1)
     """
 
-    x = x.unsqueeze(1) if x.dim() == 1 else x
-    ret = th.zeros(x.size(0), d)
+    if x.dim() == 1:
+        x = x.unsqueeze(1)
+    z = th.zeros(x.size(0), d)
     is_cuda = x.is_cuda
     x = x.cpu()
-    ret.scatter_(1, x, 1)
-    return ret.cuda() if is_cuda else ret
+    z.scatter_(1, x, 1)
+    return z.cuda() if is_cuda else z
 
 
-def nd_precision(nd_y_bar, nd_y, d):
-    nd_y_bar, nd_y = onehot(nd_y_bar, d), onehot(nd_y, d)
-    nd_y_bar, nd_y = th.chunk(nd_y_bar, d, 1), th.chunk(nd_y, d, 1)
-    return sum(precision(y_bar, y) for y_bar, y in zip(nd_y_bar, nd_y)) / d
+def get_requires_grad(module):
+    return [p.requires_grad for p in module.parameters()]
 
 
-def nd_recall(nd_y_bar, nd_y, d):
-    nd_y_bar, nd_y = onehot(nd_y_bar, d), onehot(nd_y, d)
-    nd_y_bar, nd_y = th.chunk(nd_y_bar, d, 1), th.chunk(nd_y, d, 1)
-    return sum(recall(y_bar, y) for y_bar, y in zip(nd_y_bar, nd_y)) / d
+def set_requires_grad(module, requires_grad):
+    if isinstance(requires_grad, bool):
+        for p in module.parameters():
+            p.requires_grad = requires_grad
+    else:
+        for i, p in enumerate(module.parameters()):
+            p.requires_grad = requires_grad[i]
 
 
-def nd_f_beta(nd_y_bar, nd_y, d, beta=1):
-    # macro averaging
-    nd_y_bar, nd_y = onehot(nd_y_bar, d), onehot(nd_y, d)
-    nd_y_bar, nd_y = th.chunk(nd_y_bar, d, 1), th.chunk(nd_y, d, 1)
-    p = sum(precision(y_bar, y) for y_bar, y in zip(nd_y_bar, nd_y)) / d
-    r = sum(recall(y_bar, y) for y_bar, y in zip(nd_y_bar, nd_y)) / d
-    return (1 + beta ** 2) * p * r / (beta ** 2 * p + r + 1e-5) # TODO
+def global_scores(module, loader, scores):
+    requires_grad = get_requires_grad(module)
+    set_requires_grad(module, False)
 
-
-def global_stats(module, loader, stats):
     y_bar_list, y_list = [], []
     for x, y in loader:
         if next(module.parameters()).is_cuda:
             x, y = x.cuda(), y.cuda()   
-        y_bar_list.append(th.max(module(x), 1)[1])
+        y_bar = th.max(module(x), 1)[1]
+        y_bar_list.append(y_bar.detach())
         y_list.append(y)
 
-    y_bar, y = th.cat(y_bar_list).view(-1, 1), th.cat(y_list).view(-1, 1)
-    if callable (stats):
-        return stats(y_bar, y)
+    set_requires_grad(module, requires_grad)
+
+    y, y_bar = th.cat(y_list), th.cat(y_bar_list)
+    if callable (scores):
+        return scores(y_bar, y)
     else:
-        return [s(y_bar, y) for s in stats]
-
-
-def parallel_global_stats(module, loader, stats, devices):
-    # assert next(module.parameters()).is_cuda
-    m = nn.DataParallel(module, devices, next(module.parameters()).get_device())
-    y_bar_list, y_list = [], []
-    for (x, y) in loader:
-        y_bar_list.append(th.max(m(x.cuda()), 1)[1])
-        y_list.append(y.cuda())
-
-    y_bar, y = th.cat(y_bar_list).view(-1, 1), th.cat(y_list).view(-1, 1)
-    if callable (stats):
-        return stats(y_bar, y)
-    else:
-        return tuple(s(y_bar, y) for s in stats)
+        return [s(y_bar, y) for s in scores]
 
 
 def perturb(module, std):
-    module = copy.deepcopy(module)
     p = next(module.parameters())
     device = p.get_device() if p.is_cuda else None
     for p in module.parameters():
-        p.data += th.randn(*p.shape, device=device) * std
+        p += th.randn(*p.shape, device=device) * std
     return module
-
-
-def sample(dataset, sample_size, batch_size, cuda):
-    dl = DataLoader(dataset, sample_size, shuffle=True)
-    s = itertools.takewhile(lambda x: x[0] < batch_size, enumerate(dl))
-    if cuda:
-        s = [(x.cuda(), y.cuda()) for _, (x, y) in s]
-    return s
 
 
 class MLP(nn.Module):
     def __init__(self, d, nonlinear):
         super(MLP, self).__init__()
-        self.linear_list = nn.ModuleList([nn.Linear(d[i], d[i + 1])
-                                          for i in range(len(d) - 1)])
+        self.linear_list = \
+            nn.ModuleList([nn.Linear(d[i], d[i + 1]) for i in range(len(d) - 1)])
         self.nonlinear = nonlinear
 
     def forward(self, x):
