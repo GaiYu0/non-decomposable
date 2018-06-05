@@ -15,6 +15,6 @@ parser.add_argument('--topk', type=int, default=0)
 args = parser.parse_args()
 
 keys = sorted(vars(args).keys())
-run_id = 'activation-' + '-'.join('%s-%s' % (key, str(getattr(args, key))) for key in keys)
+run_id = 'tester-' + '-'.join('%s-%s' % (key, str(getattr(args, key))) for key in keys)
 print(run_id)
 time.sleep(5)
