@@ -43,15 +43,15 @@ args.topk = 0
 '''
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--n-iterations-critic', type=int, default=25)
+parser.add_argument('--n-iterations-critic', type=int, default=0)
 parser.add_argument('--iw', type=str, default='')
 parser.add_argument('--gpu', type=int, default=0)
-parser.add_argument('--n-iterations', type=int, default=2500)
-parser.add_argument('--n-perturbations', type=int, default=25)
+parser.add_argument('--n-iterations', type=int, default=0)
+parser.add_argument('--n-perturbations', type=int, default=0)
 parser.add_argument('--batch-size-c', type=int, default=50)
 parser.add_argument('--batch-size-critic', type=int, default=1)
 parser.add_argument('--std', type=float, default=1e-1)
-parser.add_argument('--tau', type=float, default=4e-2)
+parser.add_argument('--tau', type=float, default=1e-1)
 parser.add_argument('--topk', type=int, default=0)
 args = parser.parse_args()
 
@@ -137,8 +137,8 @@ if cuda:
 # c = my.MLP((3072,) + (1024,) + (n_classes,), F.relu)
 # c = my.MLP((3072,) + (1024,) * 2 + (n_classes,), F.relu)
 # c = my.MLP((3072,) + (1024,) * 3 + (n_classes,), F.relu)
-# c = lenet.LeNet(3, n_classes)
-c = resnet.ResNet(depth=18, n_classes=n_classes)
+c = lenet.LeNet(3, n_classes)
+# c = resnet.ResNet(depth=18, n_classes=n_classes)
 
 critic = rn.RN(args.batch_size_c, 2 * n_classes, tuple(), (4 * n_classes, 64, 256), (256, 64) + (1,), F.relu, triu=True)
 
