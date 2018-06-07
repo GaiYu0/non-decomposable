@@ -38,7 +38,6 @@ view () {
     fi
 }
 
-mkdir view
-ln raw/* view -s
+cp -r raw view
 cd view
 view $@

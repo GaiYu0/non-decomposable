@@ -1,11 +1,9 @@
 run () {
     if [ $1 -eq 0 ]; then
         for x in *; do
-#           tensorboard --logdir=$x --port=$port &
-            echo $x $port
+            tensorboard --logdir=$x --port=$port &
             port=$((port + 1))
         done
-        wait
         return
     else
         for x in *; do
@@ -18,3 +16,4 @@ run () {
 
 port=$2
 run $1
+wait
