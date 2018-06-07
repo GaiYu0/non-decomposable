@@ -1,4 +1,4 @@
-iw_arr=("" sqrt linear quadratic)
+iw_arr=(none sqrt linear quadratic)
 
 gpu=0
 for iw in "${iw_arr[@]}"
