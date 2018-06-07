@@ -28,7 +28,7 @@ import rn
 '''
 args = argparse.Namespace()
 args.n_iterations_critic = None
-# args.iw = ''
+# args.iw = 'none'
 # args.iw = 'sqrt'
 # args.iw = 'linear'
 args.iw = 'quadratic'
@@ -119,7 +119,7 @@ def global_scores(c, loader):
     return collections.OrderedDict(zip(keys, values))
 
 iw = {
-    '' : lambda x: th.zeros_like(x),
+    'none' : lambda x: th.zeros_like(x),
     'sqrt' : lambda x: th.sqrt(th.abs(x)),
     'linear' : lambda x: x,
     'quadratic' : lambda x: x * x,
