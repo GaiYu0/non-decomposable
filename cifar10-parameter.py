@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[ ]:
+# In[1]:
 
 
 import argparse
@@ -22,34 +22,38 @@ import resnet
 import rn
 
 
-# In[ ]:
+# In[2]:
 
 
 '''
 args = argparse.Namespace()
-args.n_iterations_critic = None
+args.batch_size_c = 50
+args.batch_size_critic = 1
+args.ckpt_every = 5
+args.gpu = 0
 # args.iw = 'none'
 # args.iw = 'sqrt'
 # args.iw = 'linear'
 args.iw = 'quadratic'
-args.gpu = None
-args.n_iterations = None
-args.n_perturbations = None
-args.batch_size_c = None
-args.batch_size_critic = None
-args.std = None
-args.tau = None
+args.n_iterations = 10
+args.n_iterations_critic = 15
+args.n_perturbations = 50
+args.resume = 5
+args.std = 0.1
+args.tau = 0.1
 args.topk = 0
 '''
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--n-iterations-critic', type=int, default=None)
-parser.add_argument('--iw', type=str, default=None)
-parser.add_argument('--gpu', type=int, default=None)
-parser.add_argument('--n-iterations', type=int, default=None)
-parser.add_argument('--n-perturbations', type=int, default=None)
 parser.add_argument('--batch-size-c', type=int, default=None)
 parser.add_argument('--batch-size-critic', type=int, default=None)
+parser.add_argument('--ckpt-every', type=int, default=None)
+parser.add_argument('--gpu', type=int, default=None)
+parser.add_argument('--iw', type=str, default=None)
+parser.add_argument('--n-iterations', type=int, default=None)
+parser.add_argument('--n-iterations-critic', type=int, default=None)
+parser.add_argument('--n-perturbations', type=int, default=None)
+parser.add_argument('--resume', type=int, default=None)
 parser.add_argument('--std', type=float, default=None)
 parser.add_argument('--tau', type=float, default=None)
 parser.add_argument('--topk', type=int, default=0)
@@ -58,11 +62,12 @@ args = parser.parse_args()
 verbose = None
 
 keys = sorted(vars(args).keys())
-run_id = 'parameter-' + '-'.join('%s-%s' % (key, str(getattr(args, key))) for key in keys)
+excluded = ('gpu', 'n_iterations', 'resume')
+run_id = 'parameter-' + '-'.join('%s-%s' % (key, str(getattr(args, key))) for key in keys if key not in excluded)
 writer = tb.SummaryWriter('runs/' + run_id)
 
 
-# In[ ]:
+# In[3]:
 
 
 if args.gpu < 0:
@@ -97,7 +102,7 @@ loader = TrainLoader()
 n_classes = int(train_y.max() - train_y.min() + 1)
 
 
-# In[ ]:
+# In[4]:
 
 
 def forward(y, y_bar):
@@ -129,7 +134,7 @@ iw = {
 }
 
 
-# In[ ]:
+# In[5]:
 
 
 th.random.manual_seed(1)
@@ -152,14 +157,20 @@ if cuda:
 c_optim = optim.Adam(c.parameters())
 critic_optim = optim.Adam(critic.parameters())
 
+if args.resume > 0:
+    c.load_state_dict(th.load('ckpt/%s-c-%d' % (run_id, args.resume)))
+    critic.load_state_dict(th.load('ckpt/%s-critic-%d' % (run_id, args.resume)))
+    c_optim.load_state_dict(th.load('ckpt/%s-c_optim-%d' % (run_id, args.resume)))
+    critic_optim.load_state_dict(th.load('ckpt/%s-critic_optim-%d' % (run_id, args.resume)))
+
 for key, value in global_scores(c, test_loader).items():
     print(key, value)
 
 
-# In[ ]:
+# In[6]:
 
 
-for i in range(args.n_iterations):
+for i in range(args.resume, args.resume + args.n_iterations):
     if verbose == 0:
         t0 = time.time()
 
@@ -248,4 +259,10 @@ for i in range(args.n_iterations):
         
     for key, value in test_scores.items():
         writer.add_scalar('test-' + key, value, i)
+    
+    if args.ckpt_every > 0 and (i + 1) % args.ckpt_every == 0:
+        th.save(c.state_dict(), 'ckpt/%s-c-%d' % (run_id, i + 1))
+        th.save(critic.state_dict(), 'ckpt/%s-critic-%d' % (run_id, i + 1))
+        th.save(c_optim.state_dict(), 'ckpt/%s-c_optim-%d' % (run_id, i + 1))
+        th.save(critic_optim.state_dict(), 'ckpt/%s-critic_optim-%d' % (run_id, i + 1))
 
