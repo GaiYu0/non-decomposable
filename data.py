@@ -1,5 +1,6 @@
 import numpy as np
 import torch as th
+import torch.utils as utils
 from torchvision import datasets
 
 def load_mnist(labelling={}, rbg=False, epsilon=1e-5):
@@ -7,7 +8,7 @@ def load_mnist(labelling={}, rbg=False, epsilon=1e-5):
         if rbg:
             x = x.view((-1, 1, 28, 28))
         if labelling:
-            y_bar = y.clone()
+            y_bar = y.copy()
             for (m, n), label in labelling.items():
                 y_bar[(m <= y) * (y < n)] = label
             y = y_bar
@@ -35,7 +36,7 @@ def load_cifar10(labelling={}, rbg=False, torch=False, epsilon=1e-5):
         if rbg:
             x = x.reshape((-1, 32, 32, 3)).transpose((0, 3, 1, 2))
         if labelling:
-            y_bar = y.clone()
+            y_bar = y.copy()
             for (m, n), label in labelling.items():
                 y_bar[(m <= y) * (y < n)] = label
             y = y_bar
@@ -96,3 +97,19 @@ def load_cifar100(labelling={}, rbg=False, torch=False, epsilon=1e-5):
         test_y = th.from_numpy(test_y)
 
     return train_x, train_y, test_x, test_y
+
+def BalancedDataLoader(x, y, batch_size, cuda):
+    idx_list = [y == lbl for lbl in range(th.min(y), th.max(y) + 1)]
+    ds_list = [utils.data.TensorDataset(x[idx], y[idx]) for idx in idx_list]
+    bs_list = [int(batch_size * th.sum(idx) / len(x)) for idx in idx_list]
+
+    new_loader = lambda ds, bs: iter(utils.data.DataLoader(ds, bs, shuffle=True))
+    loader_list = [new_loader(ds, bs) for ds, bs in zip(ds_list, bs_list)]
+    contextualize = lambda x, y: (x.cuda(), y.cuda()) if cuda else (x, y)
+    while True:
+        try:
+            batch_list = [contextualize(*next(loader)) for loader in loader_list]
+        except StopIteration:
+            loader_list = [new_loader(ds, bs) for ds, bs in zip(ds_list, bs_list)]
+        x_tuple, y_tuple = tuple(zip(*batch_list))
+        yield th.cat(x_tuple), th.cat(y_tuple)
