@@ -27,18 +27,19 @@ import rn
 
 '''
 args = argparse.Namespace()
-args.batch_size_c = 50
+args.batch_size_c = 100
 args.batch_size_critic = 1
 args.ckpt_every = 0
-args.gpu = 2
+args.gpu = 0
 args.iw = 'none'
 # args.iw = 'sqrt'
 # args.iw = 'linear'
 # args.iw = 'quadratic'
 args.log_every = 1
-args.n_iterations = 1000
+args.n_iterations = 100
 args.n_iterations_critic = 15
 args.n_perturbations = 50
+args.report_every = 5
 args.resume = 0
 args.std = 0.1
 args.tau = 0.1
@@ -103,10 +104,6 @@ def forward(y, y_bar):
     y_bar = F.softmax(y_bar, 1)
     return th.cat((y, y_bar), 1).view(1, -1)
 
-def L_batch(y, y_bar):
-    y_bar = th.max(y_bar, 1)[1].detach()
-    return metrics.f1_score(y, y_bar, average='macro')
-
 def global_scores(c, loader):
     keys = ('accuracy', 'precision', 'recall', 'f1')
     scores = (
@@ -117,6 +114,21 @@ def global_scores(c, loader):
     )
     values = [value.item() for value in my.global_scores(c, loader, scores)]
     return collections.OrderedDict(zip(keys, values))
+
+def L_batch(y, y_bar):
+    y_bar = th.max(y_bar, 1)[1].detach()
+    return metrics.f1_score(y, y_bar, average='macro')
+
+def log_report(prefix, report, i):
+    line_tuple, avg_total = my.parse_report(report)
+    for j, line in enumerate(line_tuple):
+        for key, value in line.items():
+            writer.add_scalar(prefix + '%d-' % j + key, value, i)
+    for key, value in avg_total.items():
+        writer.add_scalar(prefix + 'avg/total-' + key, value, i)
+
+def report(c, loader):
+    return my.global_scores(c, loader, metrics.classification_report)
 
 iw = {
     'none' : lambda x: th.zeros_like(x),
@@ -240,7 +252,7 @@ for i in range(args.resume, args.resume + args.n_iterations):
     L_c = L_batch(y, c(x))
     writer.add_scalar('L_c', L_c, i)
 
-    if (i + 1) % args.log_every == 0:
+    if args.log_every > 0 and (i + 1) % args.log_every == 0:
         train_scores = global_scores(c, train_loader)
         test_scores = global_scores(c, test_loader)
 
@@ -253,6 +265,16 @@ for i in range(args.resume, args.resume + args.n_iterations):
         for key, value in test_scores.items():
             writer.add_scalar('test-' + key, value, i)
 
+    if args.report_every > 0 and (i + 1) % args.report_every == 0:
+        train_report = report(c, train_loader)
+        test_report = report(c, test_loader)
+        
+        print(train_report)
+        print(test_report)
+        
+        log_report('train-', train_report, i)
+        log_report('test-', test_report, i)
+        
     if args.ckpt_every > 0 and (i + 1) % args.ckpt_every == 0:
         th.save(c.state_dict(), 'ckpt/%s-c-%d' % (run_id, i + 1))
         th.save(critic.state_dict(), 'ckpt/%s-critic-%d' % (run_id, i + 1))
