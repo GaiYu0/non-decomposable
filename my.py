@@ -1,3 +1,4 @@
+import collections
 import itertools
 import torch as th
 import torch.utils as utils
@@ -59,6 +60,16 @@ def global_scores(module, loader, scores):
         return scores(y_bar, y)
     else:
         return [s(y_bar, y) for s in scores]
+
+
+def parse_report(report):
+    def parse_line(line):
+        keys = ('precision', 'recall', 'f1', 'support')
+        p, r, f1, s = line.replace(' / ', '').split()[1:]
+        p, r, f1, s = float(p), float(r), float(f1), int(s)
+        return collections.OrderedDict(zip(keys, (p, r, f1, s)))
+    line_list = report.split('\n')
+    return tuple(map(parse_line, line_list[2 : -3])), parse_line(line_list[-2])
 
 
 def perturb(module, std):
