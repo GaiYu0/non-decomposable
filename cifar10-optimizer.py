@@ -160,8 +160,8 @@ if cuda:
     c.cuda()
     critic.cuda()
 
-c_optim = optim.SGD(c.parameters(), lr=0.1, momentum=0.9)
-# c_optim = optim.Adam(c.parameters())
+# c_optim = optim.SGD(c.parameters(), lr=0.1, momentum=0.9)
+c_optim = optim.Adam(c.parameters(), amsgrad=True)
 critic_optim = optim.Adam(critic.parameters())
 
 if args.resume > 0:
