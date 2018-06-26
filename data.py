@@ -70,7 +70,7 @@ def load_cifar100(labelling={}, rbg=False, torch=False, epsilon=1e-5):
         if rbg:
             x = x.reshape((-1, 32, 32, 3)).transpose((0, 3, 1, 2))
         if labelling:
-            y_bar = y.clone()
+            y_bar = y.copy()
             for (m, n), label in labelling.items():
                 y_bar[(m <= y) * (y < n)] = label
             y = y_bar
