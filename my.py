@@ -33,14 +33,6 @@ def set_requires_grad(module, requires_grad):
             p.requires_grad = requires_grad[i]
 
 
-def sample_batches(dataset, batch_size, n_batches, cuda):
-    loader = utils.data.DataLoader(dataset, batch_size, shuffle=True)
-    batches = itertools.takewhile(lambda x: x[0] < n_batches, enumerate(loader))
-    if cuda:
-        batches = [(x.cuda(), y.cuda()) for _, (x, y) in batches]
-    return batches
-
-
 def global_scores(module, loader, scores):
     requires_grad = get_requires_grad(module)
     set_requires_grad(module, False)
