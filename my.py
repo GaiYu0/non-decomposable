@@ -9,6 +9,10 @@ def copy(m, n):
         q[:] = p
 
 
+def isnan(x):
+    return int(th.sum((x != x).long())) > 0
+
+
 def get_requires_grad(module):
     return [p.requires_grad for p in module.parameters()]
 
@@ -43,6 +47,10 @@ def global_scores(module, loader, scores):
         return [s(y_bar, y) for s in scores]
 
 
+def n_parameters(module):
+    return sum(p.numel() for p in module.parameters())
+
+
 def onehot(x, d):
     """
     Parameters
@@ -75,11 +83,3 @@ def perturb(module, std):
     for p in module.parameters():
         p += th.randn(*p.shape, device=device) * std
     return module
-
-
-def isnan(x):
-    return int(th.sum((x != x).long())) > 0
-
-
-def module_isnan(module):
-    return any(isnan(x) for x in module.parameters())

@@ -101,9 +101,11 @@ def load_cifar100(labelling={}, rbg=False, torch=False, epsilon=1e-5):
 def BalancedDataLoader(x, y, batch_size, cuda):
     idx_list = [y == lbl for lbl in range(th.min(y), th.max(y) + 1)]
     ds_list = [utils.data.TensorDataset(x[idx], y[idx]) for idx in idx_list]
-    bs_list = [int(batch_size * th.sum(idx) / len(x)) for idx in idx_list]
+    bs_list = [int(batch_size * th.sum(idx) / len(x)) for idx in idx_list[:-1]]
+    bs_list.append(batch_size - sum(bs_list))
 
-    new_loader = lambda ds, bs: iter(utils.data.DataLoader(ds, bs, shuffle=True))
+    kwargs = {'shuffle' : True, 'drop_last' : True, 'num_workers' : 0}
+    new_loader = lambda ds, bs: iter(utils.data.DataLoader(ds, bs, **kwargs))
     loader_list = [new_loader(ds, bs) for ds, bs in zip(ds_list, bs_list)]
     contextualize = lambda x, y: (x.cuda(), y.cuda()) if cuda else (x, y)
     while True:
