@@ -4,20 +4,9 @@ import torch as th
 import torch.utils as utils
 
 
-def onehot(x, d):
-    """
-    Parameters
-    ----------
-    x : (n,) or (n, 1)
-    """
-
-    if x.dim() == 1:
-        x = x.unsqueeze(1)
-    z = th.zeros(x.size(0), d)
-    is_cuda = x.is_cuda
-    x = x.cpu()
-    z.scatter_(1, x, 1)
-    return z.cuda() if is_cuda else z
+def copy(m, n):
+    for p, q in zip(m.parameters(), n.parameters()):
+        q[:] = p
 
 
 def get_requires_grad(module):
@@ -52,6 +41,22 @@ def global_scores(module, loader, scores):
         return scores(y_bar, y)
     else:
         return [s(y_bar, y) for s in scores]
+
+
+def onehot(x, d):
+    """
+    Parameters
+    ----------
+    x : (n,) or (n, 1)
+    """
+
+    if x.dim() == 1:
+        x = x.unsqueeze(1)
+    z = th.zeros(x.size(0), d)
+    is_cuda = x.is_cuda
+    x = x.cpu()
+    z.scatter_(1, x, 1)
+    return z.cuda() if is_cuda else z
 
 
 def parse_report(report):

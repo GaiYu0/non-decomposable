@@ -3,12 +3,12 @@ import torch as th
 import torch.utils as utils
 from torchvision import datasets
 
-def load_mnist(labelling={}, rbg=False, epsilon=1e-5):
+def load_mnist(labelling={}, rbg=False, epsilon=1e-5, **kwargs):
     def process(x, y):
         if rbg:
             x = x.view((-1, 1, 28, 28))
         if labelling:
-            y_bar = y.copy()
+            y_bar = y.clone()
             for (m, n), label in labelling.items():
                 y_bar[(m <= y) * (y < n)] = label
             y = y_bar
