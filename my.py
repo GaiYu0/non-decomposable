@@ -1,12 +1,13 @@
 import collections
+import copy
 import itertools
 import torch as th
 import torch.utils as utils
 
 
-def copy(m, n):
+def copy_module(m, n):
     for p, q in zip(m.parameters(), n.parameters()):
-        q[:] = p
+        q.data, q.grad = copy.deepcopy(p.data), copy.deepcopy(p.grad)
 
 
 def isnan(x):
