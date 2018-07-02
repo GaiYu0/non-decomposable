@@ -2,9 +2,9 @@
 # for xyz in "${xyz_arr[@]}"
 
 gpu=0
-for
+for std in 0.1 0.5 2.5 7.5
 do
-    ipython3 &
+    python3 parameter.py --gpu $gpu --std $std &
     gpu=$((gpu + 1))
 done
 wait
