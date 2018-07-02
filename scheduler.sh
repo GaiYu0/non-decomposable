@@ -1,9 +1,10 @@
-iw_arr=(none sqrt linear quadratic)
+# xyz_arr=(x y z)
+# for xyz in "${xyz_arr[@]}"
 
 gpu=0
-for iw in "${iw_arr[@]}"
+for
 do
-    ipython3 $1 -- --gpu $gpu --iw $iw &
+    ipython3 &
     gpu=$((gpu + 1))
 done
 wait
