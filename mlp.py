@@ -1,9 +1,10 @@
 import torch.nn as nn
 
 class MLP(nn.Module):
-    def __init__(self, features, nonlinear):
+    def __init__(self, feats, nonlinear):
         super(MLP, self).__init__()
-        self.linear_list = nn.ModuleList([nn.Linear(in_features, out_features) for in_features, out_features in zip(features[:-1], features[1:])])
+        self.linear_list = nn.ModuleList([nn.Linear(i, j) \
+                                          for i, j in zip(feats[:-1], feats[1:])])
         self.nonlinear = nonlinear
 
     def forward(self, x):
