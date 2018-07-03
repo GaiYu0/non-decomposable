@@ -16,8 +16,9 @@ import torch.nn.functional as F
 import torch.optim as optim
 import torch.utils as utils
 import data
-import my
+import guided_es
 import lenet
+import my
 import resnet
 import rn
 
@@ -30,6 +31,7 @@ args = argparse.Namespace()
 args.actor = 'linear'
 # args.actor = 'lenet'
 # args.actor = 'resnet'
+args.alpha = 0.5
 args.avg = 'binary' # average
 args.bsa = 100 # batch size of actor
 args.bscx = 1 # batch size of critic (x)
@@ -37,6 +39,7 @@ args.bscy = 1 # batch size of critic (y)
 args.ckpt_every = 0
 # args.dataset = 'mnist'
 args.ds = 'cifar10' # data set
+args.ges = True # guided es
 args.gpu = 0
 args.iw = 'none'
 # args.iw = 'sqrt'
@@ -50,10 +53,12 @@ args.ni = 100 # number of iterations
 args.nia = 1 # number of iterations (actor)
 args.nic = 25 # number of iterations (critic)
 args.np = 25 # number of perturbations
+args.np_ges = 5 # number of perturbations for guided es
 args.report_every = 1
 args.resume = 0
 args.ssc = 1 # sample size of critic
 args.std = 0.1
+args.std_ges = 0.1
 args.tau = 0.1
 args.tensorboard = True
 args.verbose = -1
@@ -61,12 +66,14 @@ args.verbose = -1
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--actor', type=str, default='linear')
+parser.add_argument('--alpha', type=float, default=0.5)
 parser.add_argument('--avg', type=str, default='binary')
 parser.add_argument('--bsa', type=int, default=100)
 parser.add_argument('--bscx', type=int, default=1)
 parser.add_argument('--bscy', type=int, default=1)
 parser.add_argument('--ckpt-every', type=int, default=1000)
 parser.add_argument('--ds', type=str, default='cifar10')
+parser.add_argument('--ges', type=bool, default=True)
 parser.add_argument('--gpu', type=int, default=None)
 parser.add_argument('--iw', type=str, default='none')
 parser.add_argument('--lbl', type=str, default='91')
@@ -76,10 +83,12 @@ parser.add_argument('--ni', type=int, default=10000)
 parser.add_argument('--nia', type=int, default=1)
 parser.add_argument('--nic', type=int, default=25)
 parser.add_argument('--np', type=int, default=25)
+parser.add_argument('--np-ges', type=int, default=5)
 parser.add_argument('--report-every', type=int, default=100)
 parser.add_argument('--resume', type=int, default=0)
 parser.add_argument('--ssc', type=int, default=1)
 parser.add_argument('--std', type=float, default=None)
+parser.add_argument('--std-ges', type=float, default=0.1)
 parser.add_argument('--tau', type=float, default=0.1)
 parser.add_argument('--tensorboard', type=bool, default=True)
 parser.add_argument('--verbose', type=int, default=-1)
@@ -283,6 +292,11 @@ for i in range(args.resume, args.resume + args.ni):
         objective = -th.mean(critic(yz))
         actor_optim.zero_grad()
         objective.backward()
+        
+        if args.ges:
+            eval = lambda actor: forward(actor, batch_list, yz=False)[0]
+            guided_es.guided_es(actor, eval, args.np_ges, args.std_ges, args.alpha)
+            
         actor_optim.step()
     
     my.copy_module(actor, actor_bar)
