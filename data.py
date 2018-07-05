@@ -98,7 +98,8 @@ def load_cifar100(labelling={}, rbg=False, torch=False, epsilon=1e-5):
 
     return train_x, train_y, test_x, test_y
 
-def BalancedDataLoader(x, y, batch_size, cuda):
+
+def BalancedDataLoader(x, y, batch_size, cuda, infinite=True):
     idx_list = [y == lbl for lbl in range(th.min(y), th.max(y) + 1)]
     ds_list = [utils.data.TensorDataset(x[idx], y[idx]) for idx in idx_list]
     bs_list = [int(batch_size * th.sum(idx) / len(x)) for idx in idx_list[:-1]]
@@ -112,6 +113,9 @@ def BalancedDataLoader(x, y, batch_size, cuda):
         try:
             batch_list = [contextualize(*next(loader)) for loader in loader_list]
         except StopIteration:
-            loader_list = [new_loader(ds, bs) for ds, bs in zip(ds_list, bs_list)]
+            if infinite:
+                loader_list = [new_loader(ds, bs) for ds, bs in zip(ds_list, bs_list)]
+            else:
+                raise StopIteration()
         x_tuple, y_tuple = tuple(zip(*batch_list))
         yield th.cat(x_tuple), th.cat(y_tuple)
