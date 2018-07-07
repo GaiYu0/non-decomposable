@@ -92,11 +92,9 @@ n_classes = int(train_y.max() - train_y.min() + 1)
 # In[ ]:
 
 
-def ckpt(actor, critic, actor_optim, critic_optim, i):
+def ckpt(actor, actor_optim, i):
     th.save(actor.state_dict(), 'ckpt/%s-actor-%d' % (experiment_id, i + 1))
-    th.save(critic.state_dict(), 'ckpt/%s-critic-%d' % (experiment_id, i + 1))
     th.save(actor_optim.state_dict(), 'ckpt/%s-actor_optim-%d' % (experiment_id, i + 1))
-    th.save(critic_optim.state_dict(), 'ckpt/%s-critic_optim-%d' % (experiment_id, i + 1))
 
 def global_scores(c, loader):
     key_list = ['accuracy', 'precision', 'recall', 'f1']
@@ -197,5 +195,5 @@ for i in range(args.resume, args.resume + args.ni):
         report(actor, i)
         
     if args.ckpt_every > 0 and (i + 1) % args.ckpt_every == 0:
-        ckpt(actor, critic, actor_optim, critic_optim, i)
+        ckpt(actor, actor_optim, i)
 
