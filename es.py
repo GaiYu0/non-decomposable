@@ -56,7 +56,6 @@ parser.add_argument('--resume', type=int, default=0)
 parser.add_argument('--std', type=float, default=None)
 parser.add_argument('--tensorboard', type=bool, default=True)
 args = parser.parse_args()
-'''
 
 keys = sorted(vars(args).keys())
 excluded = ('ckpt_every', 'gpu', 'report_every', 'ni', 'resume', 'tensorboard', 'verbose')
