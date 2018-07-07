@@ -5,11 +5,6 @@ import torch as th
 import torch.utils as utils
 
 
-def copy_module(m, n):
-    for p, q in zip(m.parameters(), n.parameters()):
-        q.data, q.grad = copy.deepcopy(p.data), copy.deepcopy(p.grad)
-
-
 def isnan(x):
     return int(th.sum((x != x).long())) > 0
 
@@ -68,19 +63,8 @@ def onehot(x, d):
     return z.cuda() if is_cuda else z
 
 
-def parse_report(report):
-    def parse_line(line):
-        keys = ('precision', 'recall', 'f1', 'support')
-        p, r, f1, s = line.replace(' / ', '').split()[1:]
-        p, r, f1, s = float(p), float(r), float(f1), int(s)
-        return collections.OrderedDict(zip(keys, (p, r, f1, s)))
-    line_list = report.split('\n')
-    return tuple(map(parse_line, line_list[2 : -3])), parse_line(line_list[-2])
-
-
 def perturb(module, std):
     p = next(module.parameters())
     device = p.get_device() if p.is_cuda else None
     for p in module.parameters():
-        p += th.randn(*p.shape, device=device) * std
-    return module
+        p.data += th.randn(*p.shape, device=device) * std
