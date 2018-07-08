@@ -166,7 +166,6 @@ for i in range(args.resume, args.resume + args.ni):
     x, y = next(loader)
     
     epsilon_list, fscore_list = [], []
-    z_list = []
     for j in range(args.np):
         epsilon_list.append([])
         for p in actor_bar.parameters():
@@ -175,11 +174,13 @@ for i in range(args.resume, args.resume + args.ni):
         
         y_bar = th.max(actor_bar(x), 1)[1]
         fscore_list.append(metrics.f1_score(y, y_bar, average=args.avg))
-        z_list.append(actor_bar(x))
         
         for p, p_bar in zip(actor.parameters(), actor_bar.parameters()):
             p_bar.data[:] = p.data
     
+    writer.add_scalar('min(fscore_list)', min(fscore_list), i + 1)
+    writer.add_scalar('max(fscore_list)', max(fscore_list), i + 1)
+
     epsilon_zip = zip(*epsilon_list)
     for p, epsilon_tuple, fscore in zip(actor.parameters(), epsilon_zip, fscore_list):
         epsilon_tensor = th.stack(epsilon_tuple)
