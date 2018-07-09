@@ -30,11 +30,12 @@ args.actor = 'linear'
 # args.actor = 'resnet'
 args.average = 'binary'
 args.batch_size = 100
-args.dataset = 'mnist'
-# args.dataset = 'cifar10'
+# args.dataset = 'MNIST'
+args.dataset = 'CIFAR10'
 args.gpu = 1
-# args.labelling = ''
-args.labelling = '91'
+# args.post = ''
+# args.post = '91-over'
+args.post = '91-under'
 args.lr = 1e-3
 args.report_every = 1
 args.n_iterations = 1000
@@ -43,10 +44,10 @@ args.n_iterations = 1000
 parser = argparse.ArgumentParser()
 parser.add_argument('--actor', type=str, default='linear')
 parser.add_argument('--average', type=str, default='binary')
-parser.add_argument('--batch-size', type=int, default=100)
-parser.add_argument('--dataset', type=str, default='cifar10')
+parser.add_argument('--batch-size', type=int, default=None)
+parser.add_argument('--dataset', type=str, default='CIFAR10')
 parser.add_argument('--gpu', type=int, default=None)
-parser.add_argument('--labelling', type=str, default='91')
+parser.add_argument('--post', type=str, default='91-under')
 parser.add_argument('--lr', type=float, default=None)
 parser.add_argument('--report-every', type=int, default=1)
 parser.add_argument('--n-iterations', type=int, default=10000)
@@ -67,9 +68,16 @@ else:
     cuda = True
     th.cuda.set_device(args.gpu)
 
-labelling = {} if args.labelling == '' else {(0, 9) : 0, (9, 10) : 1}
 rbg = args.actor in ('lenet', 'resnet')
-train_x, train_y, test_x, test_y = getattr(data, 'load_%s' % args.dataset)(labelling, rbg, torch=True)
+train_x, train_y, test_x, test_y = data.load_dataset(args.dataset, rbg)
+train_x, test_x = data.normalize(train_x, test_x)
+if args.post == '91-under':
+    label2ratio = {0 : 0.9, 1 : 0.1}
+    train_x, train_y, test_x, test_y = data.random_subset(train_x, train_y, test_x, test_y, label2ratio)
+elif args.post == '91-over':
+    label2label = {9 : 1}
+    label2label.update({i : 0 for i in range(9)})
+    train_x, train_y, test_x, test_y = data.relabel(train_x, train_y, test_x, test_y, label2label)
 
 train_set = utils.data.TensorDataset(train_x, train_y)
 train_loader = utils.data.DataLoader(train_set, 4096, drop_last=False)
