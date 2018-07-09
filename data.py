@@ -3,99 +3,95 @@ import torch as th
 import torch.utils as utils
 from torchvision import datasets
 
-def load_mnist(labelling={}, rbg=False, epsilon=1e-5, **kwargs):
+
+def load_dataset(dataset, rbg=False):
+    """
+    Parameters
+    ----------
+    dataset : MNIST/CIFAR10/CIFAR100
+    """
     def process(x, y):
-        if rbg:
-            x = x.view((-1, 1, 28, 28))
-        if labelling:
-            y_bar = y.clone()
-            for (m, n), label in labelling.items():
-                y_bar[(m <= y) * (y < n)] = label
-            y = y_bar
+        if dataset == 'MNIST':
+            x = x.float()
+            x = x if rbg else x.view(x.size(0), -1) 
+        elif dataset.startswith('CIFAR'):
+            x, y = th.from_numpy(x), th.tensor(y)
+            x = x.float().contiguous()
+            x = th.transpose(x, 1, 3) if rbg else x.view(x.size(0), -1)
         return x, y
 
-    d = datasets.MNIST('MNIST/', train=True)
-    train_x, train_y = d.train_data.float(), d.train_labels
-    train_x = train_x.view(-1, 28 * 28)
+    container = getattr(datasets, dataset)(dataset, train=True)
+    train_x, train_y = process(container.train_data, container.train_labels)
+
+    container = getattr(datasets, dataset)(dataset, train=False)
+    test_x, test_y = process(container.test_data, container.test_labels)
+
+    return train_x, train_y, test_x, test_y
+
+
+def normalize(train_x, test_x, epsilon=1e-5):
+    """
+    Parameters
+    ----------
+    train_x, test_x : torch.Tensor
+    """
+    trainx_shape = train_x.shape
+    train_x = train_x.view(train_x.size(0), -1)
     mean = th.mean(train_x, 0, keepdim=True)
-    std = th.std(train_x, 0, keepdim=True) + epsilon
-    train_x = (train_x - mean) / std
-    train_x, train_y = process(train_x, train_y)
+    train_x -= mean
+    std = th.sqrt(th.mean(train_x * train_x, 0, keepdim=True)) + epsilon
+    train_x /= std
+    train_x = train_x.view(trainx_shape)
 
-    d = datasets.MNIST('MNIST/', train=False)
-    test_x, test_y = d.test_data.float(), d.test_labels
-    test_x = test_x.view(-1, 28 * 28)
+    testx_shape = test_x.shape
+    test_x = test_x.view(test_x.size(0), -1)
     test_x = (test_x - mean) / std
-    test_x, test_y = process(test_x, test_y)
+    test_x = test_x.view(testx_shape)
 
+    return train_x, test_x
+
+
+def random_subset(train_x, train_y, test_x, test_y, label2ratio):
+    """
+    Parameters
+    ----------
+    train_x, train_y, test_x, test_y: torch.Tensor
+    """
+    def process(x_tensor, y_tensor):
+        x_list, y_list = [], []
+        for y in th.unique(y_tensor):
+            ratio = label2ratio.get(y.item(), 0)
+            if ratio > 0:
+                mask = y_tensor == y
+                m = th.sum(mask)
+                n = int(ratio * m.item())
+                x_list.append(x_tensor[mask][th.randperm(m)[:n]])
+                y_list.append(th.tensor([y.item()] * n, device=y.device))
+        x_tensor, y_tensor = th.cat(x_list, 0), th.cat(y_list, 0)
+        randperm = th.randperm(len(x_tensor))
+        x_tensor, y_tensor = x_tensor[randperm], y_tensor[randperm]
+        return x_tensor, y_tensor
+
+    train_x, train_y = process(train_x, train_y)
+    test_x, test_y = process(test_x, test_y)
     return train_x, train_y, test_x, test_y
 
 
-def load_cifar10(labelling={}, rbg=False, torch=False, epsilon=1e-5):
+def relabel(train_x, train_y, test_x, test_y, label2label):
+    """
+    Parameters
+    ----------
+    train_x, train_y, test_x, test_y: torch.Tensor
+    """
     def process(x, y):
-        if rbg:
-            x = x.reshape((-1, 32, 32, 3)).transpose((0, 3, 1, 2))
-        if labelling:
-            y_bar = y.copy()
-            for (m, n), label in labelling.items():
-                y_bar[(m <= y) * (y < n)] = label
-            y = y_bar
+        y_bar = y.copy()
+        for key, value in label2label.items():
+            y_bar[y == key] = value
+        y = y_bar
         return x, y
 
-    d = datasets.CIFAR10('CIFAR10/', train=True)
-    train_x, train_y = d.train_data, np.array(d.train_labels)
-    train_x = np.reshape(train_x, (len(train_x), -1))
-    mean = np.mean(train_x, 0, keepdims=True)
-    std = np.std(train_x, 0, keepdims=True) + epsilon
-    train_x = (train_x - mean) / std
     train_x, train_y = process(train_x, train_y)
-
-    d = datasets.CIFAR10('CIFAR10/', train=False)
-    test_x, test_y = d.test_data, np.array(d.test_labels)
-    test_x = np.reshape(test_x, (len(test_x), -1))
-    test_x = (test_x - mean) / std
     test_x, test_y = process(test_x, test_y)
-
-    if torch:
-        train_x = th.from_numpy(train_x).float()
-        train_y = th.from_numpy(train_y)
-        test_x = th.from_numpy(test_x).float()
-        test_y = th.from_numpy(test_y)
-
-    return train_x, train_y, test_x, test_y
-
-
-def load_cifar100(labelling={}, rbg=False, torch=False, epsilon=1e-5):
-    def process(x, y):
-        if rbg:
-            x = x.reshape((-1, 32, 32, 3)).transpose((0, 3, 1, 2))
-        if labelling:
-            y_bar = y.copy()
-            for (m, n), label in labelling.items():
-                y_bar[(m <= y) * (y < n)] = label
-            y = y_bar
-        return x, y
-
-    d = datasets.CIFAR100('CIFAR100/', train=True)
-    train_x, train_y = d.train_data, np.array(d.train_labels)
-    train_x = np.reshape(train_x, (len(train_x), -1))
-    mean = np.mean(train_x, 0, keepdims=True)
-    std = np.std(train_x, 0, keepdims=True) + epsilon
-    train_x = (train_x - mean) / std
-    train_x, train_y = process(train_x, train_y)
-
-    d = datasets.CIFAR100('CIFAR100/', train=False)
-    test_x, test_y = d.test_data, np.array(d.test_labels)
-    test_x = np.reshape(test_x, (len(test_x), -1))
-    test_x = (test_x - mean) / std
-    test_x, test_y = process(test_x, test_y)
-
-    if torch:
-        train_x = th.from_numpy(train_x).float()
-        train_y = th.from_numpy(train_y)
-        test_x = th.from_numpy(test_x).float()
-        test_y = th.from_numpy(test_y)
-
     return train_x, train_y, test_x, test_y
 
 
