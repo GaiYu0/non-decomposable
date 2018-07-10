@@ -37,16 +37,16 @@ args.bsa = 100 # batch size of actor
 args.bscx = 1 # batch size of critic (x)
 args.bscy = 1 # batch size of critic (y)
 args.ckpt_every = 0
-# args.dataset = 'mnist'
-args.ds = 'cifar10' # data set
+# args.ds = 'MNIST'
+args.ds = 'CIFAR10' # data set
 args.ges = True # guided es
 args.gpu = 0
 args.iw = 'none'
 # args.iw = 'sqrt'
 # args.iw = 'linear'
 # args.iw = 'quadratic'
-# args.lbl = ''
-args.lbl = '91' # labelling
+args.post = '91-under'
+# args.post = '91-over'
 args.lra = 1e-3 # learning rate of actor
 args.lrc = 1e-3 # learning rate of critic
 args.ni = 100 # number of iterations
@@ -72,11 +72,11 @@ parser.add_argument('--bsa', type=int, default=100)
 parser.add_argument('--bscx', type=int, default=1)
 parser.add_argument('--bscy', type=int, default=1)
 parser.add_argument('--ckpt-every', type=int, default=1000)
-parser.add_argument('--ds', type=str, default='cifar10')
-parser.add_argument('--ges', type=bool, default=True)
+parser.add_argument('--ds', type=str, default='CIFAR10')
+parser.add_argument('--ges', type=bool, default=False)
 parser.add_argument('--gpu', type=int, default=None)
 parser.add_argument('--iw', type=str, default='none')
-parser.add_argument('--lbl', type=str, default='91')
+parser.add_argument('--post', type=str, default='91-under')
 parser.add_argument('--lra', type=float, default=1e-3)
 parser.add_argument('--lrc', type=float, default=1e-3)
 parser.add_argument('--ni', type=int, default=10000)
@@ -95,7 +95,7 @@ parser.add_argument('--verbose', type=int, default=-1)
 args = parser.parse_args()
 
 keys = sorted(vars(args).keys())
-excluded = ('ckpt_every', 'gpu', 'report_every', 'n_iterations', 'resume', 'tensorboard', 'verbose')
+excluded = ('ckpt_every', 'gpu', 'report_every', 'ni', 'resume', 'tensorboard', 'verbose')
 experiment_id = 'parameter#' + '#'.join('%s:%s' % (key, str(getattr(args, key))) for key in keys if key not in excluded)
 if args.tensorboard:
     writer = tb.SummaryWriter('runs/' + experiment_id)
@@ -112,9 +112,16 @@ else:
     new_tensor = th.cuda.FloatTensor
     th.cuda.set_device(args.gpu)
 
-labelling = {} if args.lbl == '' else {(0, 9) : 0, (9, 10) : 1}
 rbg = args.actor in ('lenet', 'resnet')
-train_x, train_y, test_x, test_y = getattr(data, 'load_%s' % args.ds)(labelling, rbg, torch=True)
+train_x, train_y, test_x, test_y = data.load_dataset(args.ds, rbg)
+train_x, test_x = data.normalize(train_x, test_x)
+if args.post == '91-under':
+    label2ratio = {0 : 0.9, 1 : 0.1}
+    train_x, train_y, test_x, test_y = data.random_subset(train_x, train_y, test_x, test_y, label2ratio)
+elif args.post == '91-over':
+    label2label = {9 : 1}
+    label2label.update({i : 0 for i in range(9)})
+    train_x, train_y, test_x, test_y = data.relabel(train_x, train_y, test_x, test_y, label2label)
 
 train_set = utils.data.TensorDataset(train_x, train_y)
 train_loader = utils.data.DataLoader(train_set, 4096, drop_last=False)
@@ -152,8 +159,8 @@ def forward(actor, batch_list, yz=True, L=True):
         ret.append(new_tensor([L_batch(y, z) for y, z in zip(y_tuple, z_list)]).unsqueeze(1))
     return ret
     
-def L_batch(y, y_bar):
-    y_bar = th.max(y_bar, 1)[1]
+def L_batch(y, z):
+    y_bar = th.max(z, 1)[1]
     return metrics.f1_score(y, y_bar, average=args.avg)
 
 iw = {
@@ -299,7 +306,8 @@ for i in range(args.resume, args.resume + args.ni):
             
         actor_optim.step()
     
-    my.copy_module(actor, actor_bar)
+    for p, p_bar in zip(actor.parameters(), actor_bar.parameters()):
+        p_bar.data[:] = p.data
         
     if args.report_every > 0 and (i + 1) % args.report_every == 0:
         report(actor, i)
