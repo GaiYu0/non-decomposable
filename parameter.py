@@ -32,24 +32,27 @@ args.actor = 'linear'
 # args.actor = 'lenet'
 # args.actor = 'resnet'
 args.alpha = 0.5
-args.avg = 'binary' # average
-args.bsa = 100 # batch size of actor
+args.avg = 'macro' # average
+args.bsa = 250 # batch size of actor
 args.bscx = 1 # batch size of critic (x)
 args.bscy = 1 # batch size of critic (y)
 args.ckpt_every = 0
+args.cos = False
 # args.ds = 'MNIST'
-args.ds = 'CIFAR10' # data set
+# args.ds = 'CIFAR10'
+args.ds = 'covtype'
 args.ges = True # guided es
 args.gpu = 0
 args.iw = 'none'
 # args.iw = 'sqrt'
 # args.iw = 'linear'
 # args.iw = 'quadratic'
-args.post = '91-under'
+args.post = ''
+# args.post = '91-under'
 # args.post = '91-over'
 args.lra = 1e-3 # learning rate of actor
 args.lrc = 1e-3 # learning rate of critic
-args.ni = 100 # number of iterations
+args.ni = 10 # number of iterations
 args.nia = 1 # number of iterations (actor)
 args.nic = 25 # number of iterations (critic)
 args.np = 25 # number of perturbations
@@ -67,21 +70,21 @@ args.verbose = -1
 parser = argparse.ArgumentParser()
 parser.add_argument('--actor', type=str, default='linear')
 parser.add_argument('--alpha', type=float, default=0.5)
-parser.add_argument('--avg', type=str, default='binary')
-parser.add_argument('--bsa', type=int, default=100)
+parser.add_argument('--avg', type=str, default='macro')
+parser.add_argument('--bsa', type=int, default=250)
 parser.add_argument('--bscx', type=int, default=1)
 parser.add_argument('--bscy', type=int, default=1)
 parser.add_argument('--ckpt-every', type=int, default=1000)
-parser.add_argument('--ds', type=str, default='CIFAR10')
+parser.add_argument('--ds', type=str, default='covtype')
 parser.add_argument('--ges', type=bool, default=False)
 parser.add_argument('--gpu', type=int, default=None)
 parser.add_argument('--iw', type=str, default='none')
-parser.add_argument('--post', type=str, default='91-under')
+parser.add_argument('--post', type=str, default='')
 parser.add_argument('--lra', type=float, default=1e-4)
 parser.add_argument('--lrc', type=float, default=1e-3)
-parser.add_argument('--ni', type=int, default=10000)
+parser.add_argument('--ni', type=int, default=5000)
 parser.add_argument('--nia', type=int, default=1)
-parser.add_argument('--nic', type=int, default=10)
+parser.add_argument('--nic', type=int, default=25)
 parser.add_argument('--np', type=int, default=25)
 parser.add_argument('--np-ges', type=int, default=5)
 parser.add_argument('--report-every', type=int, default=100)
@@ -123,10 +126,15 @@ elif args.post == '91-over':
     label2label.update({i : 0 for i in range(9)})
     train_x, train_y, test_x, test_y = data.relabel(train_x, train_y, test_x, test_y, label2label)
 
+bsl = {
+    'MNIST'   : 4096,
+    'CIFAR10' : 4096,
+    'covtype' : 65536,
+}[args.ds] # batch size of loader
 train_set = utils.data.TensorDataset(train_x, train_y)
-train_loader = utils.data.DataLoader(train_set, 4096, drop_last=False)
+train_loader = utils.data.DataLoader(train_set, bsl, drop_last=False)
 test_set = utils.data.TensorDataset(test_x, test_y)
-test_loader = utils.data.DataLoader(test_set, 4096, drop_last=False)
+test_loader = utils.data.DataLoader(test_set, bsl, drop_last=False)
 
 loader = data.BalancedDataLoader(train_x, train_y, args.bsa, cuda)
 
@@ -163,6 +171,13 @@ def L_batch(y, z):
     y_bar = th.max(z, 1)[1]
     return metrics.f1_score(y, y_bar, average=args.avg)
 
+def candidates(yz):
+    yz = th.chunk(yz, int(yz.size(1) / n_classes), 1)
+    y, z = th.cat(yz[::2]).detach(), th.cat(yz[1::2])
+    return [
+        th.norm(y - z, 2),
+    ]
+    
 iw = {
     'none' : lambda x: th.zeros_like(x),
     'quadratic' : lambda x: x * x,
@@ -218,13 +233,26 @@ th.random.manual_seed(1)
 if cuda:
     th.cuda.manual_seed_all(1)
 
-n_channels = 1 if args.ds == 'mnist' else 3
-size = 28 if args.ds == 'mnist' else 32
-actor = {
-    'linear' : nn.Linear(n_channels * size ** 2, n_classes),
-    'lenet'  : lenet.LeNet(3, n_classes, size),
-    'resnet' : resnet.ResNet(depth=18, n_classes=n_classes),
-}[args.actor]
+if args.ds in ['MNIST', 'CIFAR10']:
+    n_channels = {
+        'MNIST'   : 1,
+        'CIFAR10' : 3,
+    }[args.ds]
+    size = {
+        'MNIST'   : 28,
+        'CIFAR10' : 32,
+    }[args.ds]
+    actor = {
+        'linear' : nn.Linear(n_channels * size ** 2, n_classes),
+        'lenet'  : lenet.LeNet(3, n_classes, size),
+        'resnet' : resnet.ResNet(depth=18, n_classes=n_classes),
+    }[args.actor]
+elif args.ds in ['covtype']:
+    n_features = train_x.size(1)
+    actor = {
+        'linear' : nn.Linear(n_features, n_classes),
+    }[args.actor]
+
 unary = [2 * n_classes, 64]
 binary = [2 * unary[-1], 64]
 terminal = [64, 32, 16, 1]
@@ -293,12 +321,28 @@ for i in range(args.resume, args.resume + args.ni):
     my.set_requires_grad(critic, False)
     for j in range(args.nia):
         yz, L = forward(actor, batch_list)
+        
+        if args.cos:
+            def hook(g):
+                g = th.chunk(g, int(g.size(1) / n_classes), 1)
+                y, z = [th.zeros(g[0].size(), device=g[0].device)] * int(len(g) / 2), g[1::2]
+                g = th.cat(sum(zip(y, z), tuple()), 1)
+                globals()['yz_grad'] = g
+            yz.register_hook(hook)
         if args.tensorboard:
             log_stats(L, 'L', i * args.nia + j)
         
         objective = -th.mean(critic(yz))
         actor_optim.zero_grad()
         objective.backward()
+        
+        if args.cos:
+            yz = yz.detach()
+            yz.requires_grad = True
+            for objective in candidates(yz):
+                yz.grad = None
+                objective.backward()
+                F.cosine_similarity(yz_grad, yz.grad)
         
         if args.ges:
             eval = lambda actor: forward(actor, batch_list, yz=False)[0]
