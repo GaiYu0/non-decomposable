@@ -28,14 +28,15 @@ args = argparse.Namespace()
 args.actor = 'linear'
 # args.actor = 'lenet'
 # args.actor = 'resnet'
-args.average = 'binary'
-args.batch_size = 100
+args.average = 'macro'
+args.batch_size = 250
 # args.dataset = 'MNIST'
-args.dataset = 'CIFAR10'
+# args.dataset = 'CIFAR10'
+args.dataset = 'covtype'
 args.gpu = 1
-# args.post = ''
+args.post = ''
 # args.post = '91-over'
-args.post = '91-under'
+# args.post = '91-under'
 args.lr = 1e-3
 args.report_every = 1
 args.n_iterations = 1000
@@ -43,13 +44,13 @@ args.n_iterations = 1000
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--actor', type=str, default='linear')
-parser.add_argument('--average', type=str, default='binary')
+parser.add_argument('--average', type=str, default='macro')
 parser.add_argument('--batch-size', type=int, default=None)
-parser.add_argument('--dataset', type=str, default='CIFAR10')
+parser.add_argument('--dataset', type=str, default='covtype')
 parser.add_argument('--gpu', type=int, default=None)
-parser.add_argument('--post', type=str, default='91-under')
+parser.add_argument('--post', type=str, default='')
 parser.add_argument('--lr', type=float, default=None)
-parser.add_argument('--report-every', type=int, default=1)
+parser.add_argument('--report-every', type=int, default=100)
 parser.add_argument('--n-iterations', type=int, default=10000)
 args = parser.parse_args()
 
@@ -123,13 +124,25 @@ def report(actor, i):
 # In[ ]:
 
 
-n_channels = 1 if args.dataset == 'mnist' else 3
-size = 28 if args.dataset == 'mnist' else 32
-actor = {
-    'linear' : nn.Linear(n_channels * size ** 2, n_classes),
-    'lenet'  : lenet.LeNet(3, n_classes, size),
-    'resnet' : resnet.ResNet(depth=18, n_classes=n_classes),
-}[args.actor]
+if args.dataset in ['MNIST', 'CIFAR10']:
+    n_channels = {
+        'MNIST'   : 1,
+        'CIFAR10' : 3,
+    }[args.dataset]
+    size = {
+        'MNIST'   : 28,
+        'CIFAR10' : 32,
+    }[args.dataset]
+    actor = {
+        'linear' : nn.Linear(n_channels * size ** 2, n_classes),
+        'lenet'  : lenet.LeNet(3, n_classes, size),
+        'resnet' : resnet.ResNet(depth=18, n_classes=n_classes),
+    }[args.actor]
+elif args.dataset in ['covtype']:
+    n_features = train_x.size(1)
+    actor = {
+        'linear' : nn.Linear(n_features, n_classes),
+    }[args.actor]
 
 if cuda:
     actor.cuda()
