@@ -125,6 +125,9 @@ elif args.post == '91-over':
     label2label = {9 : 1}
     label2label.update({i : 0 for i in range(9)})
     train_x, train_y, test_x, test_y = data.relabel(train_x, train_y, test_x, test_y, label2label)
+elif args.post == 'covtype':
+    label2label = {0 : 0, 1 : 0, 2 : 0, 3 : 0, 4 : 1, 5 : 0, 6 : 0}
+    train_x, train_y, test_x, test_y = data.relabel(train_x, train_y, test_x, test_y, label2label)
 
 bsl = {
     'MNIST'   : 4096,
