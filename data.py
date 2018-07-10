@@ -8,8 +8,13 @@ def load_dataset(dataset, rbg=False):
     """
     Parameters
     ----------
-    dataset : MNIST/CIFAR10/CIFAR100
+    dataset : MNIST/CIFAR10/CIFAR100/covtype
     """
+    if dataset == 'covtype':
+        x, y = np.load('covtype/x.npy'), np.load('covtype/y.npy')
+        x, y = th.from_numpy(x).float(), th.from_numpy(y) - 1
+        return x, y, x, y
+
     def process(x, y):
         if dataset == 'MNIST':
             x = x.float()

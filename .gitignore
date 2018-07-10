@@ -6,6 +6,7 @@ ckpt
 log
 runs
 
+covtype/
 CIFAR10/
 CIFAR100/
 MNIST/
