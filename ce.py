@@ -15,6 +15,7 @@ import torch.nn.modules.loss as loss
 import torch.optim as optim
 import torch.utils as utils
 import data
+import mlp
 import my
 import lenet
 import resnet
@@ -25,11 +26,11 @@ import resnet
 
 '''
 args = argparse.Namespace()
-args.actor = 'linear'
+args.actor = 'mlp'
 # args.actor = 'lenet'
 # args.actor = 'resnet'
 args.average = 'binary'
-args.batch_size = 100
+args.batch_size = 1000
 # args.dataset = 'MNIST'
 # args.dataset = 'CIFAR10'
 args.dataset = 'covtype'
@@ -43,7 +44,7 @@ args.n_iterations = 1000
 '''
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--actor', type=str, default='linear')
+parser.add_argument('--actor', type=str, default='mlp')
 parser.add_argument('--average', type=str, default='binary')
 parser.add_argument('--batch-size', type=int, default=None)
 parser.add_argument('--dataset', type=str, default='covtype')
@@ -51,7 +52,7 @@ parser.add_argument('--gpu', type=int, default=None)
 parser.add_argument('--post', type=str, default='covtype')
 parser.add_argument('--lr', type=float, default=None)
 parser.add_argument('--report-every', type=int, default=1)
-parser.add_argument('--n-iterations', type=int, default=10000)
+parser.add_argument('--n-iterations', type=int, default=100)
 args = parser.parse_args()
 
 keys = sorted(vars(args).keys())
@@ -150,6 +151,7 @@ elif args.dataset in ['covtype']:
     n_features = train_x.size(1)
     actor = {
         'linear' : nn.Linear(n_features, n_classes),
+        'mlp'    : mlp.MLP([n_features, 60, 60, 80, n_classes], th.tanh)
     }[args.actor]
 
 if cuda:
