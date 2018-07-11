@@ -43,9 +43,9 @@ def normalize(train_x, test_x, epsilon=1e-5):
     trainx_shape = train_x.shape
     train_x = train_x.view(train_x.size(0), -1)
     mean = th.mean(train_x, 0, keepdim=True)
-    train_x -= mean
+    train_x = train_x - mean
     std = th.sqrt(th.mean(train_x * train_x, 0, keepdim=True)) + epsilon
-    train_x /= std
+    train_x = train_x / std
     train_x = train_x.view(trainx_shape)
 
     testx_shape = test_x.shape
@@ -89,7 +89,7 @@ def relabel(train_x, train_y, test_x, test_y, label2label):
     train_x, train_y, test_x, test_y: torch.Tensor
     """
     def process(x, y):
-        y_bar = y.copy()
+        y_bar = y.clone()
         for key, value in label2label.items():
             y_bar[y == key] = value
         y = y_bar

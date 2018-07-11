@@ -3,7 +3,7 @@ import torch as th
 import my
 
 
-def guided_es(module, eval, p, std, alpha):
+def guided_es(module, evaluate, p, std, alpha):
     numel = sum(x.data.numel() for x in module.parameters())
     device = next(module.parameters()).device
     n = std * (alpha / numel) ** 0.5 * th.randn(p, numel, device=device)
@@ -26,7 +26,7 @@ def guided_es(module, eval, p, std, alpha):
             x_minus.data -= epsilon[0, i : i + numel].view(x_minus.data.shape)
             i += numel
 
-        delta_list.append(eval(minus) - eval(plus))
+        delta_list.append(evaluate(minus) - evaluate(plus))
 
         for x_module, x_plus, x_minus in zip(p_module(), p_plus(), p_minus()):
             x_plus.data[:], x_minus.data[:] = x_module.data, x_module.data
@@ -41,6 +41,6 @@ def guided_es(module, eval, p, std, alpha):
 
     '''
     new_grad = th.cat([x.grad.view(1, -1) for x in p_module()], 1)
-    print(th.norm(grad) / th.norm(new_grad))
-    print(th.nn.CosineSimilarity()(grad, new_grad))
+    th.norm(grad) / th.norm(new_grad)
+    th.nn.CosineSimilarity()(grad, new_grad)
     '''
