@@ -13,7 +13,22 @@ def load_dataset(dataset, rbg=False):
     if dataset == 'covtype':
         x, y = np.load('covtype/x.npy'), np.load('covtype/y.npy')
         x, y = th.from_numpy(x).float(), th.from_numpy(y) - 1
-        return x, y, x, y
+
+        mask_list = [y == i for i in th.unique(y)]
+        x_list = list(map(x.__getitem__, mask_list))
+        y_list = list(map(y.__getitem__, mask_list))
+        n_list = [int(0.7 * len(z)) for z in x_list]
+
+        trainx_list = [z[:n] for z, n in zip(x_list, n_list)]
+        trainy_list = [z[:n] for z, n in zip(y_list, n_list)]
+
+        testx_list = [z[n:] for z, n in zip(x_list, n_list)]
+        testy_list = [z[n:] for z, n in zip(y_list, n_list)]
+
+        train_x, train_y = th.cat(trainx_list), th.cat(trainy_list)
+        test_x, test_y = th.cat(testx_list), th.cat(testy_list)
+
+        return train_x, train_y, test_x, test_y
 
     def process(x, y):
         if dataset == 'MNIST':
