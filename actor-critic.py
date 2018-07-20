@@ -22,6 +22,7 @@ import l1
 import lenet
 import mlp
 import my
+import nll
 import resnet
 import rn
 
@@ -41,7 +42,7 @@ args.bscx = 1 # batch size of critic (x)
 args.bscy = 1 # batch size of critic (y)
 args.ckpt_every = 0
 args.cos = False
-args.critic = 'l1'
+args.critic = 'nll'
 # args.ds = 'MNIST'
 # args.ds = 'CIFAR10'
 args.ds = 'covtype'
@@ -63,9 +64,9 @@ args.post = 'covtype'
 # args.post = '91-over'
 args.report_every = 1
 args.resume = 0
-args.sn = 'a' # source of noise
+args.sn = 'p' # source of noise
 args.ssc = 1 # sample size of critic
-args.std = 0.1
+args.std = 1
 args.std_ges = 0.1
 args.tau = 0.1
 args.tb = True
@@ -75,31 +76,31 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--actor', type=str, default='mlp')
 parser.add_argument('--alpha', type=float, default=0.5)
 parser.add_argument('--avg', type=str, default='binary')
-parser.add_argument('--bsa', type=int, default=1000)
+parser.add_argument('--bsa', type=int, default=500)
 parser.add_argument('--bscx', type=int, default=1)
 parser.add_argument('--bscy', type=int, default=1)
 parser.add_argument('--ckpt-every', type=int, default=100)
 parser.add_argument('--cos', type=bool, default=False)
-parser.add_argument('--critic', type=str, default='l1')
+parser.add_argument('--critic', type=str, default='nll')
 parser.add_argument('--ds', type=str, default='covtype')
 parser.add_argument('--ges', type=bool, default=False)
 parser.add_argument('--gpu', type=int, default=None)
 parser.add_argument('--iw', type=str, default='none')
 parser.add_argument('--lra', type=float, default=None)
-parser.add_argument('--lrc', type=float, default=1e-3)
+parser.add_argument('--lrc', type=float, default=None)
 parser.add_argument('--ni', type=int, default=100)
 parser.add_argument('--nia', type=int, default=1)
 parser.add_argument('--nic', type=int, default=25)
 parser.add_argument('--np', type=int, default=25)
-parser.add_argument('--np-ges', type=int, default=1)
+parser.add_argument('--np-ges', type=int, default=None)
 parser.add_argument('--post', type=str, default='covtype')
 parser.add_argument('--report-every', type=int, default=1)
 parser.add_argument('--resume', type=int, default=0)
 parser.add_argument('--sn', type=str, default='p')
 parser.add_argument('--ssc', type=int, default=1)
-parser.add_argument('--std', type=float, default=0.1)
-parser.add_argument('--std-ges', type=float, default=0.1)
-parser.add_argument('--tau', type=float, default=0.1)
+parser.add_argument('--std', type=float, default=None)
+parser.add_argument('--std-ges', type=float, default=None)
+parser.add_argument('--tau', type=float, default=None)
 parser.add_argument('--tb', type=bool, default=True)
 args = parser.parse_args()
 
@@ -164,24 +165,28 @@ def batch(tensor, bsx, bsy):
     x_list = th.chunk(tensor, nx, 0)
     return sum([[y.view(-1, shapez).contiguous() for y in th.chunk(x, ny, 1)] for x in x_list], [])
 
-def forward(actor, batch_list, z=None, yz=True, objective=True):
-    x_tuple, y_tuple = zip(*batch_list)
-    x_tensor, y_tensor = th.cat(x_tuple), th.cat(y_tuple)
-    z_tensor = actor(x_tensor) if z is None else z
-        
+def forward(actor, xyy, z=None, yz=True, softmax=None, J=None):
+    xx, yy = zip(*xyy)
+    x, y = th.cat(xx), th.cat(yy)
+
     ret = []
     if z is None:
-        ret.append(z_tensor)
+        z = actor(x)
+        ret.append(z)
     if yz:
-        ret.append(th.cat([my.onehot(y_tensor, n_classes), F.softmax(z_tensor, 1)], 1).view(len(batch_list), -1))
-    if objective:
-        z_list = th.chunk(z_tensor, len(batch_list))
-        ret.append(new_tensor([nondecomposable(y, z) for y, z in zip(y_tuple, z_list)]).unsqueeze(1))
+        onehot_x = my.one_hot(y, n_classes)
+        softmax_x = softmax(z, 1)
+        cat_x = th.cat([onehot_x, softmax_x], 1)
+        ret.append(cat_x.view(len(xyy), -1))
+    if J:
+        zz = th.chunk(z, len(xyy))
+        J_x = new_tensor([J(y, z) for y, z in zip(yy, zz)])
+        ret.append((J_x).unsqueeze(1))
     return ret
 
-def nondecomposable(y, z):
+def J(y, z, average=args.avg):
     y_bar = th.max(z, 1)[1]
-    return metrics.f1_score(y, y_bar, average=args.avg)
+    return metrics.f1_score(y, y_bar, average)
 
 def surrogate(yz):
     yz = th.chunk(yz, int(yz.size(1) / n_classes), 1)
@@ -209,7 +214,7 @@ def global_scores(c, loader):
         metrics.accuracy_score,
         lambda y, y_bar: metrics.precision_recall_fscore_support(y, y_bar, average=args.avg)
     ]
-    accuracy, (precision, recall, f1, _) = my.global_scores(c, loader, score_list)
+    accuracy, [precision, recall, f1, _] = my.global_scores(c, loader, score_list)
     return collections.OrderedDict({
         'accuracy'  : accuracy,
         'precision' : precision,
@@ -218,7 +223,7 @@ def global_scores(c, loader):
     })
 
 def log_critic_stats(critic, i):
-    if args.critic == 'l1':
+    if args.critic in ['l1', 'nll']:
         w_t = F.softmax(critic.w, 0)
         for j, w in enumerate(w_t):
             writer.add_scalar('class %d' % j, w, i + 1)
@@ -272,6 +277,8 @@ elif args.ds in ['covtype']:
 
 if args.critic == 'l1':
     critic = l1.WeightedL1Loss(n_classes)
+elif args.critic == 'nll':
+    critic = nll.WeightedNLLLoss(n_classes)
 elif args.critic == 'rn':
     unary = [2 * n_classes, 256]
     binary = [2 * unary[-1], 256]
@@ -300,44 +307,45 @@ report(actor, -1)
 # In[ ]:
 
 
+kwargs = {'softmax' : F.log_softmax, 'J' : J} if args.critic == 'nll' else {'softmax' : F.softmax, 'J' : J}
 for i in range(args.resume, args.resume + args.ni):
-    batch_list = [next(loader) for j in range(args.ssc)]
+    xyy = [next(loader) for j in range(args.ssc)]
     
     my.set_requires_grad(actor, False)
-    z, yz, objective = forward(actor, batch_list)
+    z, yz, J_x = forward(actor, xyy, **kwargs)
 
-    yzbar_list, objectivebar_list, delta_list = [], [], []
+    yz_barr, jx_barr, deltaa = [], [], []
     for j in range(args.np):
         if args.sn == 'a':
             epsilon = args.std * th.randn(z.shape, device=z.device)
-            yz_bar, objective_bar = forward(actor_bar, batch_list, z + epsilon)
+            yz_bar, jx_bar = forward(actor_bar, xyy, z + epsilon, **kwargs)
         elif args.sn == 'p':
             my.perturb(actor_bar, args.std)
-            z_bar, yz_bar, objective_bar = forward(actor_bar, batch_list)
+            z_bar, yz_bar, jx_bar = forward(actor_bar, xyy, **kwargs)
 
-        yzbar_list.append(yz_bar)
-        objectivebar_list.append(objective_bar)
-        delta_list.append(objective - objective_bar)
+        yz_barr.append(yz_bar)
+        jx_barr.append(jx_bar)
+        deltaa.append(J_x - jx_bar)
     
     if args.tb:
-        log_stats(th.cat(objectivebar_list, 1), 'objective_bar', i)
+        log_stats(th.cat(jx_barr, 1), 'J_bar', i)
     
-    yzbar_t = th.cat([yz_bar.unsqueeze(1) for yz_bar in yzbar_list], 1)
-    delta_t = th.cat(delta_list, 1)
-    w_t = F.softmax(iw(delta_t), 1)
-    entropy = th.sum(w_t * th.log(w_t)) / args.ssc
+    yz_bar = th.cat([yz_bar.unsqueeze(1) for yz_bar in yz_barr], 1)
+    delta = th.cat(deltaa, 1)
+    w = F.softmax(iw(delta), 1)
+    entropy = th.sum(w * th.log(w)) / args.ssc
     
     if args.tb:
         writer.add_scalar('entropy', entropy, i + 1)
     
-    delta_t, w_t = delta_t.unsqueeze(2), w_t.unsqueeze(2)
+    delta, w = delta.unsqueeze(2), w.unsqueeze(2)
     partial = functools.partial(batch, bsx=args.bscx, bsy=args.bscy)
-    yzbar_list, delta_list, weight_list = map(partial, [yzbar_t, delta_t, w_t])
+    yz_barr, deltaa, ww = map(partial, [yz_bar, delta, w])
     
     my.set_requires_grad(critic, True)
     for j in range(args.nic):
-        for yz_bar, delta, w in zip(yzbar_list, delta_list, weight_list):
-            mse = th.sum(w * (delta - (critic(yz) - critic(yz_bar))) ** 2)
+        for x_yzbar, x_delta, x_w in zip(yz_barr, deltaa, ww):
+            mse = th.sum(x_w * (x_delta - (critic(yz) - critic(x_yzbar))) ** 2)
             critic_opt.zero_grad()
             mse.backward()
             critic_opt.step()
@@ -348,7 +356,7 @@ for i in range(args.resume, args.resume + args.ni):
     my.set_requires_grad(actor, True)
     my.set_requires_grad(critic, False)
     for j in range(args.nia):
-        z, yz, objective = forward(actor, batch_list)
+        z, yz, J_x = forward(actor, xyy, **kwargs)
         
         if args.cos:
             def hook(g):
@@ -359,7 +367,7 @@ for i in range(args.resume, args.resume + args.ni):
             yz.register_hook(hook)
         
         if args.tb:
-            log_stats(objective, 'objective', i * args.nia + j)
+            log_stats(J_x, 'J_x', i * args.nia + j)
         
         objective = -th.mean(critic(yz))
         actor_opt.zero_grad()
@@ -374,7 +382,7 @@ for i in range(args.resume, args.resume + args.ni):
             F.cosine_similarity(yz_grad, yz.grad)
         
         if args.ges:
-            partial = lambda actor: forward(actor, batch_list, yz=False)[0]
+            partial = lambda actor: forward(actor, xyy, yz=False)[0]
             guided_es.guided_es(actor, partial, args.np_ges, args.std_ges, args.alpha)
             
         actor_opt.step()
