@@ -47,7 +47,7 @@ def n_parameters(module):
     return sum(p.numel() for p in module.parameters())
 
 
-def onehot(x, d):
+def one_hot(x, d):
     """
     Parameters
     ----------
