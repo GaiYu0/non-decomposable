@@ -6,6 +6,7 @@
 
 import argparse
 import collections
+import importlib
 import sklearn.metrics as metrics
 import tensorboardX as tb
 import torch as th
@@ -35,12 +36,15 @@ args.batch_size = 1000
 # args.dataset = 'CIFAR10'
 args.dataset = 'covtype'
 args.gpu = 1
+args.lr = 1e-4
+args.n_iterations = 1000
 args.post = 'covtype'
 # args.post = '91-over'
 # args.post = '91-under'
-args.lr = 1e-3
 args.report_every = 1
-args.n_iterations = 1000
+args.sampler = ''
+# args.sampler = 'over_sampling.RandomOverSampler'
+args.w = 0.25
 '''
 
 parser = argparse.ArgumentParser()
@@ -49,10 +53,12 @@ parser.add_argument('--average', type=str, default='binary')
 parser.add_argument('--batch-size', type=int, default=None)
 parser.add_argument('--dataset', type=str, default='covtype')
 parser.add_argument('--gpu', type=int, default=None)
-parser.add_argument('--post', type=str, default='covtype')
 parser.add_argument('--lr', type=float, default=None)
-parser.add_argument('--report-every', type=int, default=1)
 parser.add_argument('--n-iterations', type=int, default=100)
+parser.add_argument('--post', type=str, default='covtype')
+parser.add_argument('--report-every', type=int, default=1)
+parser.add_argument('--sampler', type=str, default=None)
+parser.add_argument('--w', type=float, default=None)
 args = parser.parse_args()
 
 keys = sorted(vars(args).keys())
@@ -84,6 +90,12 @@ elif args.post == 'covtype':
     label2label = {0 : 0, 1 : 0, 2 : 0, 3 : 0, 4 : 1, 5 : 0, 6 : 0}
     train_x, train_y, test_x, test_y = data.relabel(train_x, train_y, test_x, test_y, label2label)
 
+if args.sampler:
+    a, b = args.sampler.split('.')
+    sampler = getattr(importlib.import_module('imblearn.' + a), b)()
+    train_x, train_y = sampler.fit_sample(train_x, train_y)
+    train_x, train_y = th.from_numpy(train_x), th.from_numpy(train_y)
+    
 bsl = {
     'MNIST'   : 4096,
     'CIFAR10' : 4096,
@@ -154,6 +166,13 @@ elif args.dataset in ['covtype']:
         'mlp'    : mlp.MLP([n_features, 60, 60, 80, n_classes], th.tanh)
     }[args.actor]
 
+if args.w > 0:
+    assert n_classes == 2
+w = th.tensor([1 - args.w, args.w]) if args.w else th.full(n_classes, 1.0 / n_classes)
+cross_entropy = loss.CrossEntropyLoss(w)
+if cuda:
+    cross_entropy.cuda()
+
 if cuda:
     actor.cuda()
     
@@ -167,7 +186,7 @@ report(actor, -1)
 
 for i in range(args.n_iterations):
     x, y = next(loader)
-    ce = loss.CrossEntropyLoss()(actor(x), y)
+    ce = cross_entropy(actor(x), y)
     optimizer.zero_grad()
     ce.backward()
     optimizer.step()
