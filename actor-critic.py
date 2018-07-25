@@ -37,20 +37,18 @@ args.actor = 'mlp'
 # args.actor = 'resnet'
 args.alpha = 0.5
 args.avg = 'binary' # average
-args.bsa = 100 # batch size of actor
+args.bsa = 500 # batch size of actor
 args.bscx = 1 # batch size of critic (x)
 args.bscy = 1 # batch size of critic (y)
-args.ckpt_every = 0
+args.ckpt_every = 100
 args.cos = False
 args.critic = 'nll'
 # args.ds = 'MNIST'
 # args.ds = 'CIFAR10'
 args.ds = 'covtype'
-args.ges = False # guided es
+args.ges = True # guided es
 args.gpu = 0
 args.iw = 'none'
-# args.iw = 'sqrt'
-# args.iw = 'linear'
 # args.iw = 'quadratic'
 args.lra = 1e-3 # learning rate of actor
 args.lrc = 1e-3 # learning rate of critic
@@ -58,7 +56,7 @@ args.ni = 1000 # number of iterations
 args.nia = 1 # number of iterations (actor)
 args.nic = 25 # number of iterations (critic)
 args.np = 25 # number of perturbations
-args.np_ges = 1 # number of perturbations for guided es
+args.np_ges = 5 # number of perturbations for guided es
 args.post = 'covtype'
 # args.post = '91-under'
 # args.post = '91-over'
@@ -76,31 +74,31 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--actor', type=str, default='mlp')
 parser.add_argument('--alpha', type=float, default=0.5)
 parser.add_argument('--avg', type=str, default='binary')
-parser.add_argument('--bsa', type=int, default=None)
+parser.add_argument('--bsa', type=int, default=500)
 parser.add_argument('--bscx', type=int, default=1)
 parser.add_argument('--bscy', type=int, default=1)
 parser.add_argument('--ckpt-every', type=int, default=100)
 parser.add_argument('--cos', type=bool, default=False)
 parser.add_argument('--critic', type=str, default='nll')
 parser.add_argument('--ds', type=str, default='covtype')
-parser.add_argument('--ges', type=bool, default=False)
+parser.add_argument('--ges', type=bool, default=None)
 parser.add_argument('--gpu', type=int, default=None)
-parser.add_argument('--iw', type=str, default='none')
+parser.add_argument('--iw', type=str, default=None)
 parser.add_argument('--lra', type=float, default=None)
 parser.add_argument('--lrc', type=float, default=None)
 parser.add_argument('--ni', type=int, default=100)
 parser.add_argument('--nia', type=int, default=1)
-parser.add_argument('--nic', type=int, default=25)
-parser.add_argument('--np', type=int, default=25)
-parser.add_argument('--np-ges', type=int, default=None)
+parser.add_argument('--nic', type=int, default=None)
+parser.add_argument('--np', type=int, default=None)
+parser.add_argument('--np-ges', type=int, default=1)
 parser.add_argument('--post', type=str, default='covtype')
-parser.add_argument('--report-every', type=int, default=1)
+parser.add_argument('--report-every', type=int, default=100)
 parser.add_argument('--resume', type=int, default=0)
-parser.add_argument('--sn', type=str, default='p')
+parser.add_argument('--sn', type=str, default=None)
 parser.add_argument('--ssc', type=int, default=1)
 parser.add_argument('--std', type=float, default=None)
-parser.add_argument('--std-ges', type=float, default=None)
-parser.add_argument('--tau', type=float, default=None)
+parser.add_argument('--std-ges', type=float, default=1)
+parser.add_argument('--tau', type=float, default=0.1)
 parser.add_argument('--tb', type=bool, default=True)
 args = parser.parse_args()
 
@@ -382,7 +380,7 @@ for i in range(args.resume, args.resume + args.ni):
             F.cosine_similarity(yz_grad, yz.grad)
         
         if args.ges:
-            partial = lambda actor: forward(actor, xyy, yz=False)[0]
+            partial = lambda actor: forward(actor, xyy, yz=False, **kwargs)[1]
             guided_es.guided_es(actor, partial, args.np_ges, args.std_ges, args.alpha)
             
         actor_opt.step()
